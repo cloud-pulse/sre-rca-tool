@@ -1,0 +1,44 @@
+============================================================
+SRE-AI EVALUATION REPORT
+Generated: 2026-03-21 20:48:55
+============================================================
+
+BASELINE MODE RESULTS
+------------------------------------------------------------
+Root Cause: Database service appears to be experiencing connection issues.
+Confidence: 55%
+Fixes: 3 provided
+  [High] Restart database service
+  [Medium] Check database logs
+  [Low] Monitor connections
+
+RAG-AUGMENTED MODE RESULTS
+------------------------------------------------------------
+Root Cause: Database connection pool exhausted due to connection leak in payment-service retry logic, matching historical incident_001.log pattern.
+Confidence: 82%
+Historical Match: yes - DB connection pool exhaustion (incident_001.log)
+Fixes: 3 provided
+  [High] Increase DB connection pool size from 100 to 300 (as done in incident_001)
+  [Medium] Fix connection leak in payment-service retry logic
+  [Low] Add pool monitoring alerts at 70% threshold
+
+RAG RETRIEVED INCIDENTS
+------------------------------------------------------------
+1. incident_001.log — 84.2% similarity
+   Type: DB connection pool exhaustion
+   Resolution: Increased pool size from 100 to 300
+
+2. incident_002.log — 61.5% similarity
+   Type: Payment service OOM killed
+   Resolution: Increased memory limit to 1Gi
+
+3. incident_003.log — 43.1% similarity
+   Type: Network policy misconfiguration
+   Resolution: Rolled back NetworkPolicy
+
+EVALUATION METRICS
+------------------------------------------------------------
+Confidence delta: +27%
+Historical match: yes
+Fix count baseline: 3
+Fix count RAG: 3

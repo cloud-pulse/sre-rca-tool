@@ -63,3 +63,6 @@ CRIT [10:18:45] payment-svc multiple transactions dropped
 2024-03-15T10:21:30Z [WARN]  [database-service]  attempt 3 of 3 to reconnect
 [WARNING] database pod restarting... attempt 2
 2024-03-15T10:22:00Z ERROR payment-service Database host unreachable after 3 retries
+2024-03-15T10:25:00Z [ERROR] [database-service] NEW: connection pool exhausted again
+2024-03-15T10:25:01Z [ERROR] [payment-service] NEW: failed to process transaction txn_99999
+2024-03-15T10:25:02Z [ERROR] [api-gateway] NEW: circuit breaker triggered again
