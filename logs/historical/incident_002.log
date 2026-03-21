@@ -1,0 +1,49 @@
+# INCIDENT: Payment service OOM killed
+# DATE: 2024-02-03
+# SEVERITY: HIGH
+# AFFECTED SERVICES: payment-service, api-gateway
+# ROOT CAUSE: Memory leak in payment-service request handler.
+#             Unclosed HTTP client sessions accumulating in memory.
+#             Pod hit memory limit (512Mi) and was OOMKilled by K8s.
+# RESOLUTION: Increased memory limit from 512Mi to 1Gi via kubectl.
+#             Fixed HTTP client session leak in payment-service code.
+#             Added memory usage metrics alerting at 80% threshold.
+# STATUS: RESOLVED
+2024-02-03T14:00:01Z [INFO]  [payment-service]  Service started, memory usage: 128Mi / 512Mi (25%)
+2024-02-03T14:01:00Z [INFO]  [api-gateway]       Routing paths updated
+2024-02-03T14:05:30Z [INFO]  [payment-service]   HTTP client session pool size: 100
+2024-02-03T14:10:00Z [INFO]  [payment-service]   Health check: OK, memory usage: 204Mi / 512Mi (40%)
+2024-02-03T14:15:20Z [INFO]  [payment-service]   HTTP client session pool size: 450
+2024-02-03T14:18:22Z [WARN]  [payment-service]   memory usage: 420Mi / 512Mi (82%)
+2024-02-03T14:19:05Z [WARN]  [payment-service]   GC pause detected: 450ms
+2024-02-03T14:20:15Z [INFO]  [api-gateway]       payment-service response time: 650ms
+2024-02-03T14:22:10Z [WARN]  [payment-service]   HTTP client session pool size: 1250
+2024-02-03T14:23:45Z [WARN]  [payment-service]   memory usage: 460Mi / 512Mi (90%)
+2024-02-03T14:25:00Z [WARN]  [payment-service]   GC pause detected: 1200ms
+2024-02-03T14:25:30Z [WARN]  [api-gateway]       payment-service response time: 1350ms
+2024-02-03T14:28:15Z [ERROR] [payment-service]  memory usage: 495Mi / 512Mi (96%)
+2024-02-03T14:29:05Z [WARN]  [payment-service]   HTTP client session pool size: 2800
+2024-02-03T14:30:10Z [WARN]  [payment-service]   GC pause detected: 3500ms
+[CRITICAL] 14:30:45 k8s-kubelet memory cgroup threshold exceeded
+2024-02-03T14:31:05Z [ERROR] [payment-service]  OOMKilled — container exceeded memory limit 512Mi
+14:31:06 - system - payment-svc process terminated with SIGKILL
+2024-02-03T14:31:10Z [ERROR] [api-gateway]       payment-service connection refused
+2024-02-03T14:31:15Z [ERROR] [api-gateway]       payment-service connection refused
+2024-02-03T14:31:30Z [WARN]  [api-gateway]       queuing request — payment-service unavailable
+2024-02-03T14:32:00Z [WARN]  [payment-service]   pod restarting (restart count: 1)
+2024-02-03T14:32:15Z [INFO]  [payment-service]  Service started, memory usage: 128Mi / 512Mi (25%)
+2024-02-03T14:35:00Z [WARN]  [payment-service]   memory usage: 420Mi / 512Mi (82%)
+2024-02-03T14:36:30Z [WARN]  [payment-service]   GC pause detected: 500ms
+2024-02-03T14:37:05Z [ERROR] [payment-service]  OOMKilled — container exceeded memory limit 512Mi
+2024-02-03T14:37:15Z [ERROR] [api-gateway]       payment-service connection refused
+2024-02-03T14:37:45Z [WARN]  [api-gateway]       queuing request — payment-service unavailable
+CRIT [14:38:00] Back-off restarting failed container
+2024-02-03T14:39:00Z [WARN]  [payment-service]   pod restarting (restart count: 2)
+[WARNING] 14:40:00 SRE alert acknowledged: updating pod specification
+2024-02-03T14:41:30Z [INFO]  [system]            kubectl set resources: memory limit updated to 1Gi
+2024-02-03T14:42:00Z [INFO]  [payment-service]   Service started with new limits
+2024-02-03T14:42:30Z [INFO]  [payment-service]   HTTP client session pool size: 0
+2024-02-03T14:45:00Z [INFO]  [api-gateway]       payment-service response time: 95ms
+2024-02-03T14:46:15Z [INFO]  [payment-service]   GC cycle completed smoothly, 12ms pause
+2024-02-03T14:48:00Z [INFO]  [payment-service]   payment-service pod healthy — memory usage: 256Mi / 1Gi (25%)
+2024-02-03T14:50:00Z [INFO]  [api-gateway]       queue drained, all operations normal

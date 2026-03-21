@@ -1,0 +1,52 @@
+# INCIDENT: Network policy misconfiguration
+# DATE: 2024-02-20
+# SEVERITY: CRITICAL
+# AFFECTED SERVICES: api-gateway, payment-service,
+#                    database-service, auth-service
+# ROOT CAUSE: Kubernetes NetworkPolicy update accidentally blocked
+#             ingress traffic between sre-demo and default namespaces.
+#             All inter-service communication dropped after policy
+#             was applied during routine maintenance window.
+# RESOLUTION: Identified misconfigured NetworkPolicy using kubectl
+#             describe. Rolled back NetworkPolicy to previous version.
+#             All inter-service traffic restored within 3 minutes.
+#             Added policy validation step to change management process.
+# STATUS: RESOLVED
+2024-02-20T22:00:01Z [INFO]  [api-gateway]      All upstream services reachable, status OK
+2024-02-20T22:00:15Z [INFO]  [payment-service]  System healthy, processing requests
+2024-02-20T22:01:00Z [INFO]  [database-service] Connection pool stable
+2024-02-20T22:02:10Z [INFO]  [auth-service]     Tokens validating normally
+2024-02-20T22:05:00Z [INFO]  [system]           routine maintenance window started
+2024-02-20T22:07:14Z [INFO]  [system]           NetworkPolicy 'sre-network-policy' applied successfully
+2024-02-20T22:07:15Z [ERROR] [api-gateway]      connection refused — host: payment-service port: 8081
+2024-02-20T22:07:15Z [ERROR] [payment-service]  connection refused — host: database-service port: 5432
+2024-02-20T22:07:15Z [ERROR] [payment-service]  connection refused — host: auth-service port: 8082
+2024-02-20T22:07:16Z [ERROR] [api-gateway]      connection refused — host: auth-service port: 8082
+2024-02-20T22:07:16Z [ERROR] [auth-service]     connection refused — host: database-service port: 5432
+2024-02-20T22:07:18Z [ERROR] [api-gateway]      health check FAILED — unable to reach upstream services
+2024-02-20T22:07:19Z [ERROR] [payment-service]  health check FAILED — unable to reach upstream services
+2024-02-20T22:07:19Z [ERROR] [auth-service]     health check FAILED — unable to reach upstream services
+2024-02-20T22:07:22Z [ERROR] [api-gateway]      all downstream dependencies unreachable
+2024-02-20T22:07:23Z [ERROR] [payment-service]  all downstream dependencies unreachable
+[CRITICAL] 22:08:00 cluster-monitor 100% routing failure detected across all endpoints
+2024-02-20T22:08:30Z [WARN]  [api-gateway]      circuit breakers OPEN for all routes
+2024-02-20T22:10:00Z [ERROR] [database-service] 0 active connections to internal endpoints
+2024-02-20T22:11:45Z [WARN]  [system]           SRE pagerduty alert triggered: total network blackout
+2024-02-20T22:15:00Z [INFO]  [system]           investigation phase initiated by SRE team
+2024-02-20T22:18:30Z [WARN]  [system]           suspected network policy misconfiguration
+2024-02-20T22:20:15Z [INFO]  [system]           kubectl describe networkpolicy — ingress rules blocking
+22:21:05 - k8s-admin - inter-namespace traffic blocked by policy rule
+2024-02-20T22:25:00Z [ERROR] [api-gateway]      connection refused — host: payment-service port: 8081
+2024-02-20T22:25:01Z [ERROR] [payment-service]  connection refused — host: database-service port: 5432
+2024-02-20T22:25:02Z [ERROR] [api-gateway]      health check FAILED — unable to reach upstream services
+2024-02-20T22:26:00Z [INFO]  [system]           rolling back NetworkPolicy to version sre-network-policy-v2
+2024-02-20T22:26:15Z [INFO]  [system]           NetworkPolicy rollback applied successfully
+2024-02-20T22:26:16Z [INFO]  [api-gateway]      TCP connection established to payment-service:8081
+2024-02-20T22:26:17Z [INFO]  [payment-service]  TCP connection established to database-service:5432
+2024-02-20T22:26:30Z [INFO]  [api-gateway]      inter-service connectivity restored
+2024-02-20T22:26:45Z [INFO]  [payment-service]  database connections verified, pool rebuilding
+2024-02-20T22:27:00Z [INFO]  [auth-service]     identity provider synchronization complete
+CRIT 22:27:15 monitoring recovering alerts... all clear
+2024-02-20T22:28:30Z [INFO]  [api-gateway]      circuit breakers CLOSED for all routes
+2024-02-20T22:35:00Z [INFO]  [system]           all services reporting healthy
+2024-02-20T22:40:00Z [INFO]  [api-gateway]      stable operations resumed

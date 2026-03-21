@@ -1,0 +1,65 @@
+2024-03-15T10:00:01Z [INFO]  [api-gateway]       Server started on port 8080
+2024-03-15T10:00:03Z [INFO]  [auth-service]      Connected to identity provider
+2024-03-15T10:00:05Z [INFO]  [payment-service]   Payment engine initialized
+2024-03-15T10:00:06Z [INFO]  [database-service]  Database connection pool started, size 100
+2024-03-15T10:01:10Z [INFO]  [api-gateway]       Routing paths updated
+2024-03-15T10:01:30Z [INFO]  [auth-service]      token validation successful
+2024-03-15T10:02:15Z [INFO]  [payment-service]   Processing batch job 101
+2024-03-15T10:03:00Z [INFO]  [database-service]  Periodic vacuum completed
+2024-03-15T10:03:45Z [INFO]  [auth-service]      health check: OK
+2024-03-15T10:04:12Z [INFO]  [api-gateway]       health check: OK
+2024-03-15T10:05:01Z [INFO]  [payment-service]   health check: OK
+2024-03-15T10:05:22Z [INFO]  [database-service]  health check: OK
+2024-03-15T10:06:15Z [INFO]  [api-gateway]       forwarding request to auth-service
+2024-03-15T10:06:17Z [INFO]  [auth-service]      token validation successful
+2024-03-15T10:07:05Z [INFO]  [api-gateway]       forwarding request to payment-service
+2024-03-15T10:07:06Z [INFO]  [payment-service]   initiating payment transaction id: txn_82734
+2024-03-15T10:07:08Z [INFO]  [database-service]  Executing transaction for txn_82734
+2024-03-15T10:08:00Z [WARN]  [database-service]  connection pool at 60% capacity
+2024-03-15T10:08:15Z [INFO]  [api-gateway]       forwarding request to payment-service
+2024-03-15T10:08:17Z [INFO]  [payment-service]   initiating payment transaction id: txn_82735
+2024-03-15T10:08:45Z [WARN]  [database-service]  connection pool at 80% capacity
+2024-03-15T10:09:10Z [WARN]  [database-service]  connection pool at 90% capacity
+2024-03-15T10:09:55Z [WARN]  [auth-service]      latency increased to 45ms
+2024-03-15T10:10:05Z [WARN]  [database-service]  connection pool at 95% capacity
+2024-03-15T10:10:30Z WARN database-service connection pool running low, at 99% capacity
+10:11:05 - payment-service - initiating payment transaction id: txn_82736
+2024-03-15T10:11:10Z ERROR database-service failed to acquire connection from pool
+[WARNING] database pod connections exhausted, waiting for timeout
+2024-03-15T10:11:45Z [ERROR] [database-service]  connection timeout after 30s
+2024-03-15T10:12:00Z [ERROR] [database-service]  max connections (100) reached
+2024-03-15T10:12:15Z ERROR payment-service database connection refused
+2024-03-15T10:12:16Z ERROR payment-service failed to acquire connection from pool
+2024-03-15T10:12:30Z [WARN]  [payment-service]   retrying database connection
+CRIT [10:12:32] payment-svc transaction rolled back due to db error
+2024-03-15T10:12:45Z ERROR payment-service Database host unreachable after 3 retries
+2024-03-15T10:13:00Z [ERROR] [payment-service]   database unreachable
+2024-03-15T10:13:05Z [ERROR] [payment-service]   transaction failed for txn_82736
+2024-03-15T10:13:10Z [ERROR] [payment-service]   transaction rollback — db unavailable
+2024-03-15T10:13:25Z [WARN]  [api-gateway]       upstream payment-service slow response
+2024-03-15T10:13:30Z [ERROR] [api-gateway]       payment-service response time: 2045ms (threshold: 200ms)
+2024-03-15T10:14:00Z [ERROR] [payment-service]   service degraded
+2024-03-15T10:14:15Z [WARN]  [payment-service]   payment processing degraded, queuing requests
+2024-03-15T10:14:30Z [WARN]  [payment-service]   queue depth: 154 requests pending
+2024-03-15T10:14:45Z [ERROR] [api-gateway]       payment-service returned 500
+2024-03-15T10:14:50Z [ERROR] [api-gateway]       payment-service returned HTTP 500
+10:15:02 - api-gateway - upstream connection failure detected
+2024-03-15T10:15:15Z [ERROR] [api-gateway]       returning 503 to clients
+2024-03-15T10:15:20Z [ERROR] [api-gateway]       returning HTTP 503 to client
+2024-03-15T10:15:45Z [ERROR] [api-gateway]       circuit breaker opened
+2024-03-15T10:16:00Z [ERROR] [api-gateway]       circuit breaker OPEN for payment-service
+2024-03-15T10:16:30Z [WARN]  [auth-service]      latency increased to 120ms
+2024-03-15T10:17:00Z [INFO]  [auth-service]      normal operations mostly
+2024-03-15T10:17:15Z [WARN]  [auth-service]      health check: OK but degraded
+2024-03-15T10:17:30Z [INFO]  [auth-service]      token validation successful
+2024-03-15T10:18:00Z [ERROR] [payment-service]   queue depth: 532 requests pending
+CRIT [10:18:45] payment-svc multiple transactions dropped
+2024-03-15T10:19:00Z [ERROR] [database-service]  OOM detected
+[WARNING] database pod restarting... attempt 1
+2024-03-15T10:19:45Z [ERROR] [database-service]  pod OOMKilled, restarting
+2024-03-15T10:20:00Z [ERROR] [database-service]  pod restart triggered
+2024-03-15T10:20:30Z [WARN]  [database-service]  attempt 1 of 3 to reconnect
+2024-03-15T10:21:00Z [WARN]  [database-service]  attempt 2 of 3 to reconnect
+2024-03-15T10:21:30Z [WARN]  [database-service]  attempt 3 of 3 to reconnect
+[WARNING] database pod restarting... attempt 2
+2024-03-15T10:22:00Z ERROR payment-service Database host unreachable after 3 retries
