@@ -1,0 +1,13 @@
+Status:           Running
+Conditions:
+  Type              Status
+  Ready             False
+Containers:
+  app:
+    Liveness:       httpGet http://:8080/health delay=10s timeout=1s period=10s #success=1 #failure=3
+    Readiness:      httpGet http://:8080/health delay=10s timeout=1s period=10s #success=1 #failure=3
+Events:
+  Type     Reason     Message
+  ----     ------     -------
+  Warning  Unhealthy  Liveness probe failed: HTTP probe failed with statuscode: 503
+  Warning  Killing    Killing container with id docker://12345:Container failed liveness probe, will be restarted

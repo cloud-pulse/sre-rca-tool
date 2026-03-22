@@ -1,0 +1,15 @@
+Name:             payment-service-5c68f6d899-xyz12
+Namespace:        default
+Status:           OOMKilled
+Containers:
+  app:
+    Last State:     Terminated
+      Reason:       OOMKilled
+      Exit Code:    137
+    Limits:
+      memory:       512Mi
+Events:
+  Type     Reason      Message
+  ----     ------      -------
+  Warning  OOMKilling  Memory cgroup out of memory: Killed process 1234 (app) total-vm:700140kB, anon-rss:524288kB
+  Warning  Killing     Killing container with id docker://abcdef:Need to kill Pod

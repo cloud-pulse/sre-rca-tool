@@ -1,0 +1,11 @@
+Status:           Pending
+Containers:
+  app:
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Image:          myrepo/payment-service:v2.1.0-bad
+Events:
+  Type     Reason      Message
+  ----     ------      -------
+  Warning  Failed      Failed to pull image "myrepo/payment-service:v2.1.0-bad": rpc error: code = Unknown desc = Error response from daemon: manifest for myrepo/payment-service:v2.1.0-bad not found
+  Warning  BackOff     Back-off pulling image "myrepo/payment-service:v2.1.0-bad"

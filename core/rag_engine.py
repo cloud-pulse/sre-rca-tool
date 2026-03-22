@@ -1,29 +1,20 @@
-import logging
-import warnings
-import os
-
-# Suppress sentence-transformers/transformers
-# verbose load reports
-logging.getLogger(
-    "sentence_transformers"
-).setLevel(logging.ERROR)
-logging.getLogger(
-    "transformers"
-).setLevel(logging.ERROR)
-warnings.filterwarnings(
-    "ignore",
-    message=".*position_ids.*"
-)
-warnings.filterwarnings(
-    "ignore",
-    category=FutureWarning
-)
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-import os
-import re
 import sys
+import os
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
+
+import re
 from typing import List, Dict, Any
+from core.logger import get_logger
+
+log = get_logger("rag_engine")
+
 from sentence_transformers import SentenceTransformer
 import chromadb
 
@@ -52,22 +43,22 @@ class RAGEngine:
         
         # Step 1 — Load sentence-transformer model
         self.embedder = SentenceTransformer(self.embedding_model_name)
-        print(f"Embedding model loaded: {self.embedding_model_name}")
+        log.step(f"Embedding model loaded: {self.embedding_model_name}")
         
         # Step 2 — Initialize ChromaDB persistent client
         self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
-        print(f"ChromaDB initialized at {self.chroma_path}")
+        log.step(f"ChromaDB initialized at {self.chroma_path}")
         
         # Step 3 — Get or create collection
         self.collection = self.chroma_client.get_or_create_collection(
             name="sre_historical_incidents",
             metadata={"hnsw:space": "cosine"}
         )
-        print("Collection ready: sre_historical_incidents")
+        log.step("Collection ready: sre_historical_incidents")
         
         # Step 4 — Index historical logs
         self._index_historical_logs()
-        print("RAG engine ready.")
+        log.success("RAG engine ready.")
 
     def _extract_metadata_from_header(self, lines: List[str]) -> Dict[str, str]:
         """
@@ -176,7 +167,7 @@ class RAGEngine:
         # Step 3: For each file not yet indexed
         for filename, lines in files.items():
             if filename in already_indexed:
-                print(f"Skipping {filename} (already indexed)")
+                log.step(f"Skipping {filename} (already indexed)")
                 continue
             
             # a. Extract metadata from header
@@ -186,7 +177,7 @@ class RAGEngine:
             chunks = self._chunk_log(lines)
             
             if not chunks:
-                print(f"Skipping {filename} (no chunks generated)")
+                log.step(f"Skipping {filename} (no chunks generated)")
                 continue
             
             # c. Generate embeddings for all chunks at once
@@ -215,12 +206,12 @@ class RAGEngine:
             )
             
             # e. Print progress
-            print(f"Indexed {filename}: {len(chunks)} chunks")
+            log.step(f"Indexed {filename}: {len(chunks)} chunks")
             total_chunks += len(chunks)
             indexed_files += 1
         
         # Step 5: Print total summary
-        print(f"Total indexed: {total_chunks} chunks across {indexed_files} files")
+        log.step(f"Total indexed: {total_chunks} chunks across {indexed_files} files")
 
     def get_collection_stats(self) -> Dict[str, Any]:
         """
@@ -245,7 +236,7 @@ class RAGEngine:
                 "collection_name": "sre_historical_incidents"
             }
         except Exception as e:
-            print(f"Error getting collection stats: {e}")
+            log.error(f"Error getting collection stats: {e}")
             return {
                 "total_chunks": 0,
                 "files_indexed": [],
@@ -311,9 +302,9 @@ class RAGEngine:
                           reverse=True)
         
         # Step 6: Print retrieval summary
-        print(f"RAG retrieved {len(retrieved)} historical incidents:")
+        log.step(f"RAG retrieved {len(retrieved)} historical incidents")
         for result in retrieved:
-            print(f"  {result['source_file']} — {result['similarity_score']}% match "
+            log.debug(f"{result['source_file']} — {result['similarity_score']}% match "
                   f"({result['incident_type']})")
         
         return retrieved

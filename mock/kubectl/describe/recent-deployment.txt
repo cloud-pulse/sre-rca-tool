@@ -1,0 +1,13 @@
+Annotations:      deployment.kubernetes.io/revision: "7"
+Status:           Running
+Containers:
+  app:
+    Image:          myrepo/payment-service:v2.1.0
+    Restart Count:  2
+Events:
+  Type     Reason     Message
+  ----     ------     -------
+  Normal   Pulled     Successfully pulled image "myrepo/payment-service:v2.1.0"
+  Normal   Created    Created container app
+  Normal   Started    Started container app
+  Warning  Unhealthy  Readiness probe failed: HTTP probe failed with statuscode: 500

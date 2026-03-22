@@ -1,0 +1,39 @@
+Name:             database-service-84d7fcb6f-pxkgp
+Namespace:        default
+Node:             ip-10-0-1-12/10.0.1.12
+Labels:           app=database-service
+Annotations:      kubernetes.io/psp: eks.privileged
+Status:           Running
+IP:               10.0.1.55
+Containers:
+  app:
+    Container ID:   docker://abcdef123456
+    Image:          myrepo/database-service:v1.0
+    Image ID:       docker-pullable://myrepo/database-service@sha256:123
+    Port:           5432/TCP
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+    Last State:     Terminated
+      Reason:       Error
+      Exit Code:    1
+    Ready:          False
+    Restart Count:  5
+    Limits:
+      cpu:          1000m
+      memory:       512Mi
+    Requests:
+      cpu:          500m
+      memory:       256Mi
+    Environment:
+      DB_URL:       <set to the key 'url' in secret 'db-secret'>  Optional: false
+    Liveness:       httpGet http://:5432/health delay=30s timeout=1s period=10s #success=1 #failure=3
+    Readiness:      httpGet http://:5432/health delay=5s timeout=1s period=10s #success=1 #failure=3
+Conditions:
+  Type              Status
+  Ready             False
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Warning  Unhealthy  12s (x3 over 32s)  kubelet            Readiness probe failed: HTTP probe failed with statuscode: 503
+  Warning  Unhealthy  12s (x3 over 32s)  kubelet            Liveness probe failed: HTTP probe failed with statuscode: 503
+  Warning  BackOff    5s (x4 over 45s)   kubelet            Back-off restarting failed container

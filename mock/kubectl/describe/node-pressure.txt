@@ -1,0 +1,8 @@
+Status:           Failed
+Reason:           Evicted
+Message:          The node was low on resource: memory. Threshold quantity: 100Mi, available: 45Mi
+Events:
+  Type     Reason   Message
+  ----     ------   -------
+  Warning  Evicting  Evicting pod due to node pressure
+  Warning  Evicted   Pod evicted

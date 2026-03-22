@@ -1,0 +1,39 @@
+2026-03-22T10:00:00Z [auth-service] INFO  Mostly healthy operation, token validation OK
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:02Z [istio-proxy] [auth-service] Normal traffic flowing
+2026-03-22T10:00:05Z [auth-service] INFO  Validating token for user 10293
+2026-03-22T10:00:08Z [auth-service] WARN  One warning about increased load from api-gateway
+2026-03-22T10:00:10Z [auth-service] INFO  Slightly elevated latency observed parsing JWTs (20ms)
+{"timestamp": "2026-03-22T10:00:15Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:18Z [auth-service] INFO  Continuing mostly healthy operation
+2026-03-22T10:00:20Z [istio-proxy] [auth-service] Normal traffic flowing
+
+2026-03-22T10:00:00Z [auth-service] INFO  Mostly healthy operation, token validation OK
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:02Z [istio-proxy] [auth-service] Normal traffic flowing
+2026-03-22T10:00:05Z [auth-service] INFO  Validating token for user 10293
+2026-03-22T10:00:08Z [auth-service] WARN  One warning about increased load from api-gateway
+2026-03-22T10:00:10Z [auth-service] INFO  Slightly elevated latency observed parsing JWTs (20ms)
+{"timestamp": "2026-03-22T10:00:15Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:18Z [auth-service] INFO  Continuing mostly healthy operation
+2026-03-22T10:00:20Z [istio-proxy] [auth-service] Normal traffic flowing
+
+2026-03-22T10:00:00Z [auth-service] INFO  Mostly healthy operation, token validation OK
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:02Z [istio-proxy] [auth-service] Normal traffic flowing
+2026-03-22T10:00:05Z [auth-service] INFO  Validating token for user 10293
+2026-03-22T10:00:08Z [auth-service] WARN  One warning about increased load from api-gateway
+2026-03-22T10:00:10Z [auth-service] INFO  Slightly elevated latency observed parsing JWTs (20ms)
+{"timestamp": "2026-03-22T10:00:15Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:18Z [auth-service] INFO  Continuing mostly healthy operation
+2026-03-22T10:00:20Z [istio-proxy] [auth-service] Normal traffic flowing
+
+2026-03-22T10:00:00Z [auth-service] INFO  Mostly healthy operation, token validation OK
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:02Z [istio-proxy] [auth-service] Normal traffic flowing
+2026-03-22T10:00:05Z [auth-service] INFO  Validating token for user 10293
+2026-03-22T10:00:08Z [auth-service] WARN  One warning about increased load from api-gateway
+2026-03-22T10:00:10Z [auth-service] INFO  Slightly elevated latency observed parsing JWTs (20ms)
+{"timestamp": "2026-03-22T10:00:15Z", "level": "INFO", "service": "auth-service", "message": "Health checks passing"}
+2026-03-22T10:00:18Z [auth-service] INFO  Continuing mostly healthy operation
+2026-03-22T10:00:20Z [istio-proxy] [auth-service] Normal traffic flowing

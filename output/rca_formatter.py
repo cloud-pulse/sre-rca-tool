@@ -366,6 +366,294 @@ class RCAFormatter:
         # Print closing line
         self.console.print()
 
+    def print_investigation_header(self, result: dict):
+        target = result.get("target_service", "Unknown")
+        ns = result.get("namespace", "default")
+        src = result.get("data_source", "unknown")
+        
+        src_color = "bold green" if src == "kubernetes" else "bold yellow"
+        
+        content = Text(justify="center")
+        content.append("Target: ", style="white")
+        content.append(f"{target}\n", style="bold cyan")
+        content.append("Namespace: ", style="white")
+        content.append(f"{ns}\n", style="bold white")
+        content.append("Source: ", style="white")
+        content.append(f"{src}", style=src_color)
+        
+        panel = Panel(
+            content,
+            title="[bold white]SRE-AI[/bold white]",
+            border_style="bold blue",
+            expand=True
+        )
+        self.console.print(panel)
+
+    def print_service_health_dashboard(self, result: dict):
+        self.console.print(Rule("Service Health Dashboard", style="bold cyan"))
+        
+        table = Table(
+            box=box.ROUNDED,
+            show_header=True,
+            header_style="bold white"
+        )
+        table.add_column("Service")
+        table.add_column("Health")
+        table.add_column("Role")
+        table.add_column("Errors")
+        table.add_column("Warnings")
+        table.add_column("Key Patterns")
+        
+        services_health = result.get("services_health", {})
+        timeline = result.get("cascade_timeline", [])
+        patterns = result.get("patterns_by_category", {})
+        
+        roles_map = {item.get("service"): item.get("role") for item in timeline if isinstance(item, dict) and "service" in item}
+        
+        counts = {"CRITICAL": 0, "WARNING": 0, "OK": 0}
+        
+        for svc, health in services_health.items():
+            if health == "CRITICAL":
+                row_style = "red"
+                health_cell = "[bold red]● CRITICAL[/]"
+                counts["CRITICAL"] += 1
+            elif health == "WARNING":
+                row_style = "yellow"
+                health_cell = "[bold yellow]● WARNING[/]"
+                counts["WARNING"] += 1
+            elif health == "OK":
+                row_style = "green"
+                health_cell = "[bold green]✓ OK[/]"
+                counts["OK"] += 1
+            else:
+                row_style = "dim"
+                health_cell = "[dim]? UNKNOWN[/]"
+            
+            role_raw = roles_map.get(svc, "unknown")
+            if role_raw == "root_cause":
+                role_cell = "[bold red]ROOT CAUSE[/]"
+            elif role_raw == "cascade_victim":
+                role_cell = "[yellow]CASCADE[/]"
+            elif role_raw == "unaffected":
+                role_cell = "[green]SAFE[/]"
+            else:
+                role_cell = "[dim]UNKNOWN[/]"
+                
+            # Key patterns
+            svc_patterns = []
+            for cat, items in patterns.items():
+                for item in items:
+                    if isinstance(item, str) and item.startswith(f"{svc}:"):
+                        pat_id = item.split(":", 1)[1].strip()
+                        svc_patterns.append(pat_id)
+            
+            pat_str = ", ".join(svc_patterns[:2])
+            if len(pat_str) > 40:
+                pat_str = pat_str[:37] + "..."
+            
+            table.add_row(
+                svc,
+                health_cell,
+                role_cell,
+                str(next((item.get("error_count", 0) for item in timeline if isinstance(item, dict) and item.get("service") == svc), 0)),
+                "0",
+                pat_str,
+                style=row_style
+            )
+            
+        self.console.print(table)
+        self.console.print(f"{counts['CRITICAL']} critical, {counts['WARNING']} warning, {counts['OK']} healthy services", style="white")
+
+    def print_cascade_timeline(self, result: dict):
+        self.console.print(Rule("Cascade Timeline", style="bold magenta"))
+        timeline = result.get("cascade_timeline", [])
+        
+        if not timeline:
+            self.console.print("No cascade data available", style="dim")
+            return
+            
+        for i, entry in enumerate(timeline):
+            if not isinstance(entry, dict):
+                continue
+            svc = entry.get("service", "unknown")
+            sev = entry.get("severity", "UNKNOWN")
+            event = entry.get("event", "Unknown event")
+            role = entry.get("role", "unknown")
+            
+            if sev == "CRITICAL":
+                border = "red"
+                symbol = "●"
+                title_style = "bold red"
+            elif sev == "WARNING":
+                border = "yellow"
+                symbol = "▲"
+                title_style = "bold yellow"
+            elif sev == "OK":
+                border = "green"
+                symbol = "✓"
+                title_style = "bold green"
+            else:
+                border = "dim"
+                symbol = "?"
+                title_style = "dim"
+                
+            role_display = role.replace("_", " ").upper()
+            
+            content = Text()
+            content.append(f"{symbol} {svc}  [{sev}]\n", style=title_style)
+            content.append(f"  {event}\n", style="white")
+            content.append(f"  Role: {role_display}", style="dim white")
+            
+            panel = Panel(
+                content,
+                border_style=border,
+                expand=False
+            )
+            self.console.print(panel)
+            
+            if i < len(timeline) - 1:
+                self.console.print("     ↓", style="dim")
+
+    def print_investigation_summary(self, result: dict):
+        self.console.print(Rule("Investigation Summary", style="bold white"))
+        
+        summary = result.get("investigation_summary", "No summary available")
+        panel = Panel(
+            summary,
+            style="white",
+            border_style="dim",
+            expand=True
+        )
+        self.console.print(panel)
+        
+        self.console.print("Probable Root Cause:")
+        svc = result.get("probable_root_cause_service", "Unknown")
+        cause = result.get("probable_root_cause", "Unknown")
+        self.console.print(f"Service: [bold red]{svc}[/]")
+        self.console.print(f"Cause:   [bold white]{cause}[/]")
+        
+        pre_analysis_svc = result.get("pre_analysis_root_cause", "")
+        if svc == pre_analysis_svc:
+            self.console.print("✓ Rule-based analysis agrees", style="bold green")
+        else:
+            self.console.print(f"Rule-based suggested: {pre_analysis_svc}", style="dim")
+
+    def print_ranked_causes(self, result: dict):
+        self.console.print(Rule("Ranked Causes by Category", style="bold yellow"))
+        
+        ranked = result.get("ranked_causes", [])
+        if not ranked:
+            patterns = result.get("patterns_by_category", {})
+            for cat, items in patterns.items():
+                self.console.print(Rule(cat, style="dim yellow"))
+                for item in items:
+                    self.console.print(f"[SEVERITY] {item}")
+            return
+            
+        categories = {}
+        for cause in ranked:
+            c = cause.get("category", "Uncategorized")
+            if c not in categories:
+                categories[c] = []
+            categories[c].append(cause)
+            
+        for cat, causes in categories.items():
+            self.console.print(Rule(cat, style="dim yellow"))
+            for cause in causes:
+                rank = cause.get("rank", 0)
+                svc = cause.get("service", "Unknown")
+                desc = cause.get("cause", "")
+                evidence = cause.get("evidence", "")
+                conf = cause.get("confidence", 0)
+                
+                content = Text()
+                content.append(f"#{rank} ", style="bold white")
+                content.append(f"{svc}\n", style="bold cyan")
+                content.append(f"{desc}\n", style="white")
+                content.append(f"Evidence: {evidence}\n", style="dim")
+                content.append(self._make_similarity_bar(conf))
+                
+                if conf >= 80:
+                    border = "green"
+                elif conf >= 60:
+                    border = "yellow"
+                else:
+                    border = "red"
+                    
+                self.console.print(Panel(content, border_style=border, expand=True))
+
+    def print_remediation_steps(self, result: dict):
+        self.console.print(Rule("Remediation Steps", style="bold green"))
+        
+        steps = result.get("remediation_steps", [])
+        if not steps:
+            self.console.print("No remediation steps generated. Check LLM response.", style="dim")
+            patterns = result.get("patterns_by_category", {})
+            for cat, items in patterns.items():
+                for item in items:
+                    self.console.print(f"Hint for {item}: Check pattern documentation", style="dim")
+            return
+            
+        priorities = {"IMMEDIATE": [], "SHORT-TERM": [], "LONG-TERM": []}
+        for step in steps:
+            p = step.get("priority", "LONG-TERM").upper()
+            if p in priorities:
+                priorities[p].append(step)
+            else:
+                priorities["LONG-TERM"].append(step)
+                
+        headers = {
+            "IMMEDIATE": ("IMMEDIATE — Do this now", "bold red", "red"),
+            "SHORT-TERM": ("SHORT-TERM — Within 1 hour", "bold yellow", "yellow"),
+            "LONG-TERM": ("LONG-TERM — Prevent recurrence", "bold green", "green")
+        }
+        
+        for p, p_steps in priorities.items():
+            if not p_steps:
+                continue
+                
+            htext, hstyle, border = headers[p]
+            self.console.print(Rule(htext, style=hstyle))
+            
+            for step in p_steps:
+                n = step.get("step", "?")
+                action = step.get("action", "")
+                cmd = step.get("command", "")
+                why = step.get("explanation", "")
+                
+                content = Text()
+                content.append(f"{action}\n\n", style="bold white")
+                content.append("Command:\n", style="bold cyan")
+                content.append(f"  $ {cmd}\n\n", style="dim cyan")
+                content.append("Why:\n", style="dim white")
+                content.append(f"{why}", style="white")
+                
+                self.console.print(Panel(content, title=f"Step {n}", border_style=border, expand=True))
+
+    def print_safe_services(self, result: dict):
+        safe = result.get("safe_services", [])
+        if not safe:
+            self.console.print("All services showing signs of impact", style="dim")
+            return
+            
+        self.console.print(Rule("Safe Services", style="bold green"))
+        for s in safe:
+            self.console.print(f"  ✓ {s}", style="bold green")
+            
+        self.console.print(f"{len(safe)} service(s) confirmed healthy and not contributing to incident", style="dim green")
+
+    def print_full_investigation(self, result: dict, resources: dict = None):
+        self.print_investigation_header(result)
+        self.print_service_health_dashboard(result)
+        if resources:
+            self.print_resource_table(resources)
+        self.print_cascade_timeline(result)
+        self.print_investigation_summary(result)
+        self.print_ranked_causes(result)
+        self.print_safe_services(result)
+        self.print_remediation_steps(result)
+        self.console.print(Rule("End of Investigation Report", style="dim"))
+
     def print_full_result(self, result: dict, resources: dict):
         """Convenience method that prints everything in the correct order."""
         mode = result.get("mode", "baseline")

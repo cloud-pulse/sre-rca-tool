@@ -1,11 +1,19 @@
-import random
 import sys
 import os
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
 
-# Allow imports to work when running this file directly
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import random
+import subprocess
+from core.logger import get_logger
 
+log = get_logger("resource_collector")
 
 class ResourceCollector:
     """
@@ -199,27 +207,231 @@ class ResourceCollector:
 
         return "\n".join(lines)
 
-    def get_resources(self, services: list[str], 
+    def get_real_pod_metrics(self,
+                              namespace: str = "default") -> dict:
+        try:
+            result = subprocess.run(
+                [
+                    "kubectl",
+                    "top",
+                    "pods",
+                    "-n",
+                    namespace,
+                    "--no-headers",
+                ],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            log.error(
+                "kubectl not found. Install kubectl or set SOURCE_KUBERNETES=false"
+            )
+            return {}
+
+        if result.returncode != 0:
+            log.error(
+                f"Failed to retrieve pod metrics: {result.stderr.strip()}"
+            )
+            return {}
+
+        metrics = {}
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            pod_name = parts[0]
+            cpu_usage = parts[1]
+            memory_usage = parts[2]
+
+            cpu_percent = 0
+            if cpu_usage.endswith("m"):
+                try:
+                    millicores = int(cpu_usage[:-1])
+                    cpu_percent = millicores / 10
+                except ValueError:
+                    cpu_percent = 0
+            else:
+                try:
+                    cpu_percent = int(cpu_usage) * 100
+                except ValueError:
+                    cpu_percent = 0
+
+            memory_percent = 0
+            if memory_usage.endswith("Mi"):
+                try:
+                    mem_mb = int(memory_usage[:-2])
+                    memory_percent = (mem_mb / 512) * 100
+                except ValueError:
+                    memory_percent = 0
+            elif memory_usage.endswith("Gi"):
+                try:
+                    mem_mb = float(memory_usage[:-2]) * 1024
+                    memory_percent = (mem_mb / 2048) * 100
+                except ValueError:
+                    memory_percent = 0
+            else:
+                memory_percent = 0
+
+            metrics[pod_name] = {
+                "pod_name": pod_name,
+                "cpu_usage": cpu_usage,
+                "memory_usage": memory_usage,
+                "cpu_percent": round(cpu_percent, 2),
+                "memory_percent": round(memory_percent, 2),
+            }
+
+        return metrics
+
+    def get_pod_status(self,
+                       namespace: str = "default") -> dict:
+        try:
+            result = subprocess.run(
+                [
+                    "kubectl",
+                    "get",
+                    "pods",
+                    "-n",
+                    namespace,
+                    "-o",
+                    "json",
+                ],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            log.error(
+                "kubectl not found. Install kubectl or set SOURCE_KUBERNETES=false"
+            )
+            return {}
+
+        if result.returncode != 0:
+            log.error(f"Failed to retrieve pod status: {result.stderr.strip()}")
+            return {}
+
+        try:
+            import json
+            data = json.loads(result.stdout)
+        except Exception as e:
+            log.error(f"Failed to parse pods JSON: {e}")
+            return {}
+
+        status_map = {}
+        for item in data.get("items", []):
+            metadata = item.get("metadata", {})
+            spec = item.get("spec", {})
+            pod_status = item.get("status", {})
+
+            pod_name = metadata.get("name")
+            if not pod_name:
+                continue
+
+            status = pod_status.get("phase", "Unknown")
+            restarts = 0
+            for cs in pod_status.get("containerStatuses", []):
+                restarts += cs.get("restartCount", 0)
+
+                state = cs.get("state", {})
+                if "waiting" in state and state["waiting"].get("reason") == "CrashLoopBackOff":
+                    status = "CrashLoopBackOff"
+                if "terminated" in state and state["terminated"].get("reason") == "OOMKilled":
+                    status = "OOMKilled"
+
+            cpu_limit = "0m"
+            memory_limit = "0Mi"
+            containers = spec.get("containers", [])
+            if containers:
+                limits = containers[0].get("resources", {}).get("limits", {})
+                cpu_limit = limits.get("cpu", "0m")
+                memory_limit = limits.get("memory", "0Mi")
+
+            status_map[pod_name] = {
+                "pod_name": pod_name,
+                "status": status,
+                "restarts": restarts,
+                "cpu_limit": cpu_limit,
+                "memory_limit": memory_limit,
+            }
+
+        return status_map
+
+    def get_real_resources(self,
+                           services: list[str],
+                           namespace: str = "default") -> dict:
+        metrics = self.get_real_pod_metrics(namespace)
+        statuses = self.get_pod_status(namespace)
+
+        result = {}
+        for service in services:
+            target_pod = None
+            for pod_name in metrics.keys():
+                if pod_name.startswith(service) or service in pod_name:
+                    target_pod = pod_name
+                    break
+            if not target_pod:
+                for pod_name in statuses.keys():
+                    if pod_name.startswith(service) or service in pod_name:
+                        target_pod = pod_name
+                        break
+
+            if target_pod:
+                metric_data = metrics.get(target_pod, {})
+                status_data = statuses.get(target_pod, {})
+                result[service] = {
+                    "pod_name": target_pod,
+                    "cpu_usage": metric_data.get("cpu_usage", "0m"),
+                    "cpu_limit": status_data.get("cpu_limit", "0m"),
+                    "cpu_percent": metric_data.get("cpu_percent", 0),
+                    "memory_usage": metric_data.get("memory_usage", "0Mi"),
+                    "memory_limit": status_data.get("memory_limit", "0Mi"),
+                    "memory_percent": metric_data.get("memory_percent", 0),
+                    "restarts": status_data.get("restarts", 0),
+                    "status": status_data.get("status", "Running"),
+                    "namespace": namespace,
+                }
+            else:
+                result[service] = {
+                    "pod_name": f"{service}-unknown",
+                    "cpu_usage": "0m",
+                    "cpu_limit": "0m",
+                    "cpu_percent": 0,
+                    "memory_usage": "0Mi",
+                    "memory_limit": "0Mi",
+                    "memory_percent": 0,
+                    "restarts": 0,
+                    "status": "Running",
+                    "namespace": namespace,
+                }
+
+        return result
+
+    def get_resources(self,
+                      services: list[str],
                       namespace: str = "default",
-                      use_mock: bool = True) -> dict:
-        """
-        Main entry point to collect pod resources.
-        
-        Args:
-            services: List of service names
-            namespace: Kubernetes namespace (default: "default")
-            use_mock: Use mock data (True) or kubectl (False)
-            
-        Returns:
-            Dictionary with resource data per service
-        """
-        if use_mock:
-            print("Using mock resource data (Phase 1)")
-            return self.get_mock_resources(services)
+                      use_mock: bool = None) -> dict:
+        from flags import USE_KUBERNETES
+
+        if use_mock is True:
+            active_mock = True
+        elif use_mock is False:
+            active_mock = False
         else:
-            print("Note: kubectl integration not yet available (Task 23)")
-            print("Falling back to mock resource data")
+            active_mock = not USE_KUBERNETES
+
+        if active_mock:
+            log.info("[dim]Resources: mock data[/]")
             return self.get_mock_resources(services)
+
+        log.info(f"[dim]Resources: kubectl (namespace={namespace})[/]")
+
+        real_data = self.get_real_resources(services, namespace)
+        if not real_data:
+            log.warn("kubectl data unavailable, falling back to mock")
+            return self.get_mock_resources(services)
+
+        return real_data
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

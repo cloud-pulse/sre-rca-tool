@@ -1,13 +1,20 @@
-import re
 import sys
 import os
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
+
+import re
 from datetime import datetime
 from typing import Optional
+from core.logger import get_logger
 
-# Allow imports to work when running this file directly
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+log = get_logger("log_processor")
 
 class LogProcessor:
     """

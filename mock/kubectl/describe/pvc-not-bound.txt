@@ -1,0 +1,11 @@
+Status:           Pending
+Volumes:
+  my-data-pvc:
+    Type:       PersistentVolumeClaim (a reference to a PersistentVolumeClaim in the same namespace)
+    ClaimName:  my-data-pvc
+    ReadOnly:   false
+Events:
+  Type     Reason       Message
+  ----     ------       -------
+  Warning  FailedMount  Unable to attach or mount volumes: unmounted volumes=[my-data-pvc], unattached volumes=[my-data-pvc]: timed out waiting for the condition
+  Warning  FailedMount  persistentvolumeclaim "my-data-pvc" not found

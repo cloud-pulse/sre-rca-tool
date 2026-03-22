@@ -1,0 +1,39 @@
+2026-03-22T10:00:00Z [payment-service] INFO  Processing transaction TRX-001
+2026-03-22T10:00:00Z [istio-proxy] [payment-service] Establishing outbound connection to database-service
+{"timestamp": "2026-03-22T10:00:02Z", "level": "INFO", "service": "payment-service", "message": "Transaction TRX-001 validated"}
+2026-03-22T10:00:05Z [payment-service] WARN  DB connection attempt failing, queue depth growing
+2026-03-22T10:00:08Z [payment-service] ERROR Transaction TRX-001 rollbacked due to DB timeout
+2026-03-22T10:00:10Z [istio-proxy] [payment-service] Upstream connect error or disconnect/reset before headers
+{"timestamp": "2026-03-22T10:00:12Z", "level": "ERROR", "service": "payment-service", "message": "Service degraded state: 5 active DB connections failing"}
+2026-03-22T10:00:15Z [payment-service] ERROR Queue depth growing beyond threshold (depth=150)
+2026-03-22T10:00:20Z [payment-service] WARN  Dropping new requests to prevent completely crashing
+
+2026-03-22T10:00:00Z [payment-service] INFO  Processing transaction TRX-001
+2026-03-22T10:00:00Z [istio-proxy] [payment-service] Establishing outbound connection to database-service
+{"timestamp": "2026-03-22T10:00:02Z", "level": "INFO", "service": "payment-service", "message": "Transaction TRX-001 validated"}
+2026-03-22T10:00:05Z [payment-service] WARN  DB connection attempt failing, queue depth growing
+2026-03-22T10:00:08Z [payment-service] ERROR Transaction TRX-001 rollbacked due to DB timeout
+2026-03-22T10:00:10Z [istio-proxy] [payment-service] Upstream connect error or disconnect/reset before headers
+{"timestamp": "2026-03-22T10:00:12Z", "level": "ERROR", "service": "payment-service", "message": "Service degraded state: 5 active DB connections failing"}
+2026-03-22T10:00:15Z [payment-service] ERROR Queue depth growing beyond threshold (depth=150)
+2026-03-22T10:00:20Z [payment-service] WARN  Dropping new requests to prevent completely crashing
+
+2026-03-22T10:00:00Z [payment-service] INFO  Processing transaction TRX-001
+2026-03-22T10:00:00Z [istio-proxy] [payment-service] Establishing outbound connection to database-service
+{"timestamp": "2026-03-22T10:00:02Z", "level": "INFO", "service": "payment-service", "message": "Transaction TRX-001 validated"}
+2026-03-22T10:00:05Z [payment-service] WARN  DB connection attempt failing, queue depth growing
+2026-03-22T10:00:08Z [payment-service] ERROR Transaction TRX-001 rollbacked due to DB timeout
+2026-03-22T10:00:10Z [istio-proxy] [payment-service] Upstream connect error or disconnect/reset before headers
+{"timestamp": "2026-03-22T10:00:12Z", "level": "ERROR", "service": "payment-service", "message": "Service degraded state: 5 active DB connections failing"}
+2026-03-22T10:00:15Z [payment-service] ERROR Queue depth growing beyond threshold (depth=150)
+2026-03-22T10:00:20Z [payment-service] WARN  Dropping new requests to prevent completely crashing
+
+2026-03-22T10:00:00Z [payment-service] INFO  Processing transaction TRX-001
+2026-03-22T10:00:00Z [istio-proxy] [payment-service] Establishing outbound connection to database-service
+{"timestamp": "2026-03-22T10:00:02Z", "level": "INFO", "service": "payment-service", "message": "Transaction TRX-001 validated"}
+2026-03-22T10:00:05Z [payment-service] WARN  DB connection attempt failing, queue depth growing
+2026-03-22T10:00:08Z [payment-service] ERROR Transaction TRX-001 rollbacked due to DB timeout
+2026-03-22T10:00:10Z [istio-proxy] [payment-service] Upstream connect error or disconnect/reset before headers
+{"timestamp": "2026-03-22T10:00:12Z", "level": "ERROR", "service": "payment-service", "message": "Service degraded state: 5 active DB connections failing"}
+2026-03-22T10:00:15Z [payment-service] ERROR Queue depth growing beyond threshold (depth=150)
+2026-03-22T10:00:20Z [payment-service] WARN  Dropping new requests to prevent completely crashing

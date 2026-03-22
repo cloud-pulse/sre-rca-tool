@@ -1,0 +1,8 @@
+REVISION  CHANGE-CAUSE
+1         Initial deployment v1.0.0
+2         Updated DB connection pool config
+3         Added health endpoint /health
+4         Performance optimizations v1.2.0
+5         Security patches v1.3.0
+6         Feature: async payment processing
+7         Hotfix: connection timeout config

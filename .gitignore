@@ -2,3 +2,26 @@ jarvis
 __pycache__/*
 */__pycache__
 __pycache__
+
+# Feature flags (contains local settings)
+.env
+
+# LLM cache (Task C will create this)
+.llm_cache/
+
+# ChromaDB data
+.chromadb/
+
+# Last RCA result
+.last_rca.json
+
+# Python cache
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Evaluation reports
+evaluation_report.txt

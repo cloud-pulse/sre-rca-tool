@@ -1,0 +1,6 @@
+LAST SEEN   TYPE      REASON        OBJECT
+12s         Warning   Unhealthy     pod/api-gateway-84
+  Liveness probe failed: HTTP probe
+  failed with statuscode: 503
+12s         Warning   Killing       pod/api-gateway-84
+  Stopping container due to probe

@@ -1,0 +1,5 @@
+LAST SEEN   TYPE      REASON                  OBJECT
+12s         Warning   Evicting                pod/payment-service-5c
+12s         Warning   Evicted                 pod/payment-service-5c
+12s         Warning   NodeHasDiskPressure     node/ip-10-0-1-12
+12s         Warning   NodeHasMemoryPressure   node/ip-10-0-1-12

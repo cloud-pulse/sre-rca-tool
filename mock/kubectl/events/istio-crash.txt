@@ -1,0 +1,6 @@
+LAST SEEN   TYPE      REASON        OBJECT
+12s         Warning   BackOff       pod/payment-service-5c
+  Back-off restarting failed container
+  istio-proxy
+14s         Warning   Unhealthy     pod/payment-service-5c
+  Liveness probe failed for istio-proxy

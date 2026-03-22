@@ -1,0 +1,7 @@
+LAST SEEN   TYPE      REASON             OBJECT
+3min        Normal    ScalingReplicaSet  deploy/payment-service
+  Scaled up replica set to 1
+2min        Normal    Pulled             pod/payment-service-5c68f6
+2min        Normal    Created            pod/payment-service-5c68f6
+2min        Normal    Started            pod/payment-service-5c68f6
+12s         Warning   Unhealthy          pod/payment-service-5c68f6

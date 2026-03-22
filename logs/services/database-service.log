@@ -1,0 +1,43 @@
+2026-03-22T10:00:00Z [database-service] INFO  Normal query serving for user sessions
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "database-service", "message": "Connection pool at 50% capacity"}
+2026-03-22T10:00:03Z [database-service] WARN  Connection pool filling up quickly
+2026-03-22T10:00:05Z [database-service] WARN  Slow queries under load detected (>1000ms execution)
+2026-03-22T10:00:08Z [database-service] ERROR FATAL: Pool exhaustion errors - no free connections available
+2026-03-22T10:00:10Z [database-service] ERROR rejecting new connections
+{"timestamp": "2026-03-22T10:00:15Z", "level": "FATAL", "service": "database-service", "message": "Memory limit reached, impending OOM"}
+2026-03-22T10:00:16Z [system] OOMKilled event triggered by node 
+2026-03-22T10:00:25Z [system] Pod restart initiated 
+2026-03-22T10:00:30Z [database-service] INFO  Recovery attempts starting, warming up buffer pool
+
+2026-03-22T10:00:00Z [database-service] INFO  Normal query serving for user sessions
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "database-service", "message": "Connection pool at 50% capacity"}
+2026-03-22T10:00:03Z [database-service] WARN  Connection pool filling up quickly
+2026-03-22T10:00:05Z [database-service] WARN  Slow queries under load detected (>1000ms execution)
+2026-03-22T10:00:08Z [database-service] ERROR FATAL: Pool exhaustion errors - no free connections available
+2026-03-22T10:00:10Z [database-service] ERROR rejecting new connections
+{"timestamp": "2026-03-22T10:00:15Z", "level": "FATAL", "service": "database-service", "message": "Memory limit reached, impending OOM"}
+2026-03-22T10:00:16Z [system] OOMKilled event triggered by node 
+2026-03-22T10:00:25Z [system] Pod restart initiated 
+2026-03-22T10:00:30Z [database-service] INFO  Recovery attempts starting, warming up buffer pool
+
+2026-03-22T10:00:00Z [database-service] INFO  Normal query serving for user sessions
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "database-service", "message": "Connection pool at 50% capacity"}
+2026-03-22T10:00:03Z [database-service] WARN  Connection pool filling up quickly
+2026-03-22T10:00:05Z [database-service] WARN  Slow queries under load detected (>1000ms execution)
+2026-03-22T10:00:08Z [database-service] ERROR FATAL: Pool exhaustion errors - no free connections available
+2026-03-22T10:00:10Z [database-service] ERROR rejecting new connections
+{"timestamp": "2026-03-22T10:00:15Z", "level": "FATAL", "service": "database-service", "message": "Memory limit reached, impending OOM"}
+2026-03-22T10:00:16Z [system] OOMKilled event triggered by node 
+2026-03-22T10:00:25Z [system] Pod restart initiated 
+2026-03-22T10:00:30Z [database-service] INFO  Recovery attempts starting, warming up buffer pool
+
+2026-03-22T10:00:00Z [database-service] INFO  Normal query serving for user sessions
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "database-service", "message": "Connection pool at 50% capacity"}
+2026-03-22T10:00:03Z [database-service] WARN  Connection pool filling up quickly
+2026-03-22T10:00:05Z [database-service] WARN  Slow queries under load detected (>1000ms execution)
+2026-03-22T10:00:08Z [database-service] ERROR FATAL: Pool exhaustion errors - no free connections available
+2026-03-22T10:00:10Z [database-service] ERROR rejecting new connections
+{"timestamp": "2026-03-22T10:00:15Z", "level": "FATAL", "service": "database-service", "message": "Memory limit reached, impending OOM"}
+2026-03-22T10:00:16Z [system] OOMKilled event triggered by node 
+2026-03-22T10:00:25Z [system] Pod restart initiated 
+2026-03-22T10:00:30Z [database-service] INFO  Recovery attempts starting, warming up buffer pool

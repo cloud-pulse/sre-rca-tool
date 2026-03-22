@@ -1,0 +1,5 @@
+LAST SEEN   TYPE      REASON              OBJECT
+12s         Warning   FailedMount         pod/database-service-84
+  Unable to attach or mount volumes
+14s         Warning   FailedAttachVolume  pod/database-service-84
+  AttachVolume.Attach failed

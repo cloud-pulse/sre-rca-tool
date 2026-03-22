@@ -1,0 +1,6 @@
+LAST SEEN   TYPE      REASON        OBJECT
+12s         Warning   BackOff       pod/database-service-84d7fcb6f-pxkgp
+14s         Warning   Unhealthy     pod/database-service-84d7fcb6f-pxkgp
+1min        Warning   FailedMount   pod/database-service-84d7fcb6f-pxkgp
+2min        Normal    Pulling       pod/database-service-84d7fcb6f-pxkgp
+2min        Normal    Pulled        pod/database-service-84d7fcb6f-pxkgp

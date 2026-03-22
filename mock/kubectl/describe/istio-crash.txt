@@ -1,0 +1,15 @@
+Containers:
+  app:
+    State:          Running
+  istio-proxy:
+    State:          Waiting
+      Reason:       CrashLoopBackOff
+    Last State:     Terminated
+      Reason:       Error
+      Exit Code:    255
+    Restart Count:  8
+Events:
+  Type     Reason     Message
+  ----     ------     -------
+  Warning  Unhealthy  Readiness probe failed: connection refused
+  Warning  BackOff    Back-off restarting failed container istio-proxy

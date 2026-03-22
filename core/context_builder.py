@@ -1,9 +1,17 @@
 import sys
 import os
+sys.path.insert(
+    0,
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(__file__)
+        )
+    )
+)
 
-# Allow imports to work when running this file directly
-if __name__ == "__main__" and __package__ is None:
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from core.logger import get_logger
+
+log = get_logger("context_builder")
 
 
 class ContextBuilder:

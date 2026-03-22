@@ -1,0 +1,35 @@
+2026-03-22T10:00:00Z [api-gateway] INFO  Request ID 101: Starting request routing to payment-service
+2026-03-22T10:00:00Z [istio-proxy] [api-gateway] mTLS connection established with downstream client
+2026-03-22T10:00:01Z [api-gateway] INFO  Request ID 102: Starting request routing to auth-service
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "api-gateway", "message": "auth-service returns 200 OK"}
+2026-03-22T10:00:05Z [api-gateway] WARN  High latency observed from payment-service (latency > 2s)
+2026-03-22T10:00:10Z [api-gateway] ERROR Request ID 101: 500 Internal Server Error returned from payment-service
+2026-03-22T10:00:12Z [api-gateway] WARN  Consecutive 500 errors detected from payment-service
+2026-03-22T10:00:15Z [istio-proxy] [api-gateway] Upstream connection reset by peer
+{"timestamp": "2026-03-22T10:00:16Z", "level": "ERROR", "service": "api-gateway", "message": "Circuit breaker OPEN for payment-service"}
+2026-03-22T10:00:18Z [istio-proxy] [api-gateway] Returning 503 Service Unavailable to client
+2026-03-22T10:00:20Z [api-gateway] INFO  Request ID 103: Returning 503 due to open circuit breaker
+
+2026-03-22T10:00:00Z [api-gateway] INFO  Request ID 101: Starting request routing to payment-service
+2026-03-22T10:00:00Z [istio-proxy] [api-gateway] mTLS connection established with downstream client
+2026-03-22T10:00:01Z [api-gateway] INFO  Request ID 102: Starting request routing to auth-service
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "api-gateway", "message": "auth-service returns 200 OK"}
+2026-03-22T10:00:05Z [api-gateway] WARN  High latency observed from payment-service (latency > 2s)
+2026-03-22T10:00:10Z [api-gateway] ERROR Request ID 101: 500 Internal Server Error returned from payment-service
+2026-03-22T10:00:12Z [api-gateway] WARN  Consecutive 500 errors detected from payment-service
+2026-03-22T10:00:15Z [istio-proxy] [api-gateway] Upstream connection reset by peer
+{"timestamp": "2026-03-22T10:00:16Z", "level": "ERROR", "service": "api-gateway", "message": "Circuit breaker OPEN for payment-service"}
+2026-03-22T10:00:18Z [istio-proxy] [api-gateway] Returning 503 Service Unavailable to client
+2026-03-22T10:00:20Z [api-gateway] INFO  Request ID 103: Returning 503 due to open circuit breaker
+
+2026-03-22T10:00:00Z [api-gateway] INFO  Request ID 101: Starting request routing to payment-service
+2026-03-22T10:00:00Z [istio-proxy] [api-gateway] mTLS connection established with downstream client
+2026-03-22T10:00:01Z [api-gateway] INFO  Request ID 102: Starting request routing to auth-service
+{"timestamp": "2026-03-22T10:00:01Z", "level": "INFO", "service": "api-gateway", "message": "auth-service returns 200 OK"}
+2026-03-22T10:00:05Z [api-gateway] WARN  High latency observed from payment-service (latency > 2s)
+2026-03-22T10:00:10Z [api-gateway] ERROR Request ID 101: 500 Internal Server Error returned from payment-service
+2026-03-22T10:00:12Z [api-gateway] WARN  Consecutive 500 errors detected from payment-service
+2026-03-22T10:00:15Z [istio-proxy] [api-gateway] Upstream connection reset by peer
+{"timestamp": "2026-03-22T10:00:16Z", "level": "ERROR", "service": "api-gateway", "message": "Circuit breaker OPEN for payment-service"}
+2026-03-22T10:00:18Z [istio-proxy] [api-gateway] Returning 503 Service Unavailable to client
+2026-03-22T10:00:20Z [api-gateway] INFO  Request ID 103: Returning 503 due to open circuit breaker

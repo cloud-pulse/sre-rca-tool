@@ -1,0 +1,76 @@
+# SRE-AI Service Dependency Map
+# ─────────────────────────────────────────
+# Define YOUR services here.
+# The tool reads this file at runtime —
+# no service names are hardcoded in the code.
+#
+# To add a new service:
+#   1. Add an entry under "services:"
+#   2. Fill in depends_on and exposes_to
+#   3. The tool will auto-discover more
+#      dependencies from logs and ask you
+#      before adding them here.
+#
+# dependency_confidence levels:
+#   user_defined      — you added this manually
+#   discovered_high   — found in connection logs
+#   discovered_medium — found in error logs
+
+services:
+
+  api-gateway:
+    description: "Entry point — routes all
+                  external traffic"
+    namespace: sre-demo
+    port: 8080
+    depends_on:
+      - payment-service
+      - auth-service
+    exposes_to: []
+    health_endpoint: /health
+    containers:
+      - name: api-gateway
+      - name: istio-proxy
+    dependency_confidence: user_defined
+
+  payment-service:
+    description: "Handles payment processing
+                  and transactions"
+    namespace: sre-demo
+    port: 8081
+    depends_on:
+      - database-service
+    exposes_to:
+      - api-gateway
+    health_endpoint: /health
+    containers:
+      - name: payment-service
+      - name: istio-proxy
+    dependency_confidence: user_defined
+
+  database-service:
+    description: "Primary data store for
+                  all transactional data"
+    namespace: sre-demo
+    port: 5432
+    depends_on: []
+    exposes_to:
+      - payment-service
+    health_endpoint: /ping
+    containers:
+      - name: database-service
+    dependency_confidence: user_defined
+
+  auth-service:
+    description: "Authentication and token
+                  validation service"
+    namespace: sre-demo
+    port: 8082
+    depends_on: []
+    exposes_to:
+      - api-gateway
+    health_endpoint: /health
+    containers:
+      - name: auth-service
+      - name: istio-proxy
+    dependency_confidence: user_defined

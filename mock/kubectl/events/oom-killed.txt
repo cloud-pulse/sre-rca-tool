@@ -1,0 +1,6 @@
+LAST SEEN   TYPE      REASON        OBJECT
+12s         Warning   OOMKilling    node/ip-10-0-1-12
+12s         Warning   Killing       pod/payment-service-5c68f6
+3min        Normal    Pulled        pod/payment-service-5c68f6
+3min        Normal    Started       pod/payment-service-5c68f6
+1min        Warning   BackOff       pod/payment-service-5c68f6
