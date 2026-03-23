@@ -51,6 +51,7 @@ def run_pipeline(
     use_mock: bool = None,
     namespace: str = None,
     verbose: bool = False,
+    query: str = "",
 ) -> dict:
     """Run the full RCA analysis pipeline."""
 
@@ -149,9 +150,9 @@ def run_pipeline(
     spinner_msg = f"Analyzing with phi3:mini [bold cyan]({mode} mode)[/bold cyan]..."
     with formatter.spinner(spinner_msg):
         if mode == "rag":
-            result = analyzer.analyze_rag(context, rag_context, query=log_path or "")
+            result = analyzer.analyze_rag(context, rag_context, query=query)
         else:
-            result = analyzer.analyze_baseline(context, query=log_path or "")
+            result = analyzer.analyze_baseline(context, query=query)
 
     # Enrich result
     result["incident_summary"] = incident_summary
@@ -772,9 +773,9 @@ def watch(log_file, interval, severity, mode, threshold):
             )
 
             try:
-                result = run_pipeline(
-                    log_path=log_file, severity=severity, mode=mode, verbose=False
-                )
+    result = run_pipeline(
+        log_path=log_file, severity=severity, mode=mode, verbose=False, query=log_file
+    )
 
                 # Show compact RCA result
                 _print_watch_rca(result, console, rca_count)

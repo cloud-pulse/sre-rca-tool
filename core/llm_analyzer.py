@@ -170,7 +170,8 @@ class LLMAnalyzer:
                 return True
             else:
                 log.debug("Warmup call failed, but proceeding")
-            return False
+                self._warmed_up = True
+                return True
         except requests.Timeout:
             log.debug("Warmup timed out — model will load on first call")
             self._warmed_up = True
