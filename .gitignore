@@ -23,5 +23,35 @@ __pycache__
 .DS_Store
 Thumbs.db
 
-# Evaluation reports
+# Runtime outputs
+.last_rca.json
 evaluation_report.txt
+watch_output.txt
+
+# LLM and vector store caches
+.llm_cache/
+.chromadb/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ruff_cache/
+sre_rca_tool.egg-info/
+
+# Broken pip artifact
+=6.0.0
+
+# Virtual environment
+jarvis/
+venv/
+.venv/
+
+# Environment secrets
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp

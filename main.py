@@ -773,12 +773,12 @@ def watch(log_file, interval, severity, mode, threshold):
             )
 
             try:
-    result = run_pipeline(
-        log_path=log_file, severity=severity, mode=mode, verbose=False, query=log_file
-    )
-
-                # Show compact RCA result
+                result = run_pipeline(
+                    log_path=log_file, severity=severity, mode=mode, verbose=False, query=log_file
+                    )
                 _print_watch_rca(result, console, rca_count)
+            except Exception as e:
+                    console.print(f"  [bold red]RCA failed: {e}[/bold red]\n")
 
             except Exception as e:
                 console.print(f"  [bold red]RCA failed: {e}[/bold red]\n")

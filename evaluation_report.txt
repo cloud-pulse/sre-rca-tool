@@ -1,44 +1,43 @@
 ============================================================
 SRE-AI EVALUATION REPORT
-Generated: 2026-03-21 20:48:55
+Generated: 2026-03-23 16:33:28
 ============================================================
 
 BASELINE MODE RESULTS
 ------------------------------------------------------------
-Root Cause: Database service appears to be experiencing connection issues.
-Confidence: 55%
+Root Cause: The root cause of this incident is a combination of database connection issues and pod OOM errors leading to service degradation.
+Confidence: 90%
 Fixes: 3 provided
-  [High] Restart database service
-  [Medium] Check database logs
-  [Low] Monitor connections
+  [High] Immediately scale up the 'database-service' pods, investigate memory usage patterns for OOM errors and optimize resource allocation if necessary. Also consider increasing connection pool size temporarily to handle surges in traffic while investigating root cause of high load.
+  [Medium] Review database query performance and indexing strategies as these could be contributing factors to the slow response times leading up to failures, potentially reducing CPU usage on 'database-service'. Implement rate limiting or backpressure mechanisms if applicable in your system design.
+  [Low] Investigate potential misconfigurations of circuit breakers and implement a more granular approach that can isolate the impact between services without causing unnecessary disruptions to other parts of the infrastructure, such as implementing retries with exponential backoff for transient errors or setting up alerts based on specific error patterns.
 
 RAG-AUGMENTED MODE RESULTS
 ------------------------------------------------------------
-Root Cause: Database connection pool exhausted due to connection leak in payment-service retry logic, matching historical incident_001.log pattern.
-Confidence: 82%
-Historical Match: yes - DB connection pool exhaustion (incident_001.log)
-Fixes: 3 provided
-  [High] Increase DB connection pool size from 100 to 300 (as done in incident_001)
-  [Medium] Fix connection leak in payment-service retry logic
-  [Low] Add pool monitoring alerts at 70% threshold
+Root Cause: The root cause is a combination of high CPU usage on the database service pod and network policy misconfiguration leading to OOM conditions, as seen in historical patterns where similar incidents were resolved by restoring inter-service traffic flow through proper NetworkPolicy configurations.
+Confidence: 95%
+Historical Match: no
+Fixes: 6 provided
+  [High] The database service pod experienced high CPU usage and was OOMKilled due to resource constraints (92% of the limit). This triggered a restart.
+  [Medium] As a result of this crash loop backoff state, subsequent transactions failed because they could not acquire necessary connections from an exhausted connection pool in the database service pod. The payment service and API gateway were affected by these failures as their operations depend on successful interactions with the database service.
+  [Low] Misconfigured NetworkPolicy using kubectl describe caused interruption of all inter-service traffic, which further exacerbated system strain due to inability for services to communicate effectively and process transactions efficiently. This misconfiguration led directly into a failure chain that included rolling back the problematic network policy change within 3 minutes after detection.
+  [High] Immediately rollback NetworkPolicy changes using kubectl describe, as this resolved similar issues in past incidents by restoring inter-service traffic flow and preventing further misconfigurations from affecting service communication (confidence boosted to 95% due to historical match).
+  [Medium] Scale up the database pod's resources or optimize resource usage within existing limits, as this has historically helped in managing OOM conditions by providing more breathing room for critical services. This could involve reviewing and adjusting CPU requests/limits based on observed patterns of high utilization during incidents (confidence boosted to 85% due to historical pattern).
+  [Low] Implement a circuit breaker mechanism in the API gateway that gracefully handles failures from downstream services, as this would prevent cascading effects and provide better resilience against transient service disruptions. This measure has been effective historically when faced with similar failure chains (confidence boosted to 80% due to historical pattern
 
 RAG RETRIEVED INCIDENTS
 ------------------------------------------------------------
-1. incident_001.log — 84.2% similarity
+1. incident_001.log — 83.7% similarity
    Type: DB connection pool exhaustion
-   Resolution: Increased pool size from 100 to 300
+   Resolution: Increased DB connection pool size from 100 to 300. Added connection_timeout=30s and idle_timeout=600s. Fixed retry logic in payment-service to release connections properly after each attempt.
 
-2. incident_002.log — 61.5% similarity
-   Type: Payment service OOM killed
-   Resolution: Increased memory limit to 1Gi
-
-3. incident_003.log — 43.1% similarity
+2. incident_003.log — 75.8% similarity
    Type: Network policy misconfiguration
-   Resolution: Rolled back NetworkPolicy
+   Resolution: Identified misconfigured NetworkPolicy using kubectl describe. Rolled back NetworkPolicy to previous version. All inter-service traffic restored within 3 minutes. Added policy validation step to change management process.
 
 EVALUATION METRICS
 ------------------------------------------------------------
-Confidence delta: +27%
-Historical match: yes
+Confidence delta: +5%
+Historical match: no
 Fix count baseline: 3
-Fix count RAG: 3
+Fix count RAG: 6

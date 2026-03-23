@@ -1,0 +1,6 @@
+- found that we are not creating any incident in he historical/ we are just using teh existed, if a iincident happens i t need to be update to the historical incident, if the similartity of teh incident is < 40%
+- do i stil need the evaluations if yes can you explan me why ..?
+- i can see the actula moclk dat aunder the mock/ folder under teh jkubectl. decsribe, events, rollout, hstory .txt, why do n't i just merge teh bothe logs/ folder and mocl fole and use one folder for teh mock data ..?
+- validate all teh scrpts in teh scrips folder are still usful or not, 
+- got .env and conig.yaml can i merge bothe and use the .env and mu whole config file whith proper heading, comments 
+-just saw set-up .py file how can i use it ..? why it got py modeules as ai_sre, main and flags, why not only ai_sre..?

@@ -21,94 +21,100 @@ class ResourceCollector:
     Phase 1 uses realistic mock data. Real kubectl implementation in Task 23.
     """
 
-    # Mock data for services that appeared in the incident
-    MOCK_DATA = {
-        "database-service": {
-            "pod_name": "database-service-7d9f8b-xkq2p",
-            "cpu_usage": "920m",
-            "cpu_limit": "1000m",
-            "cpu_percent": 92,
-            "memory_usage": "1.8Gi",
-            "memory_limit": "2Gi",
-            "memory_percent": 90,
-            "restarts": 5,
-            "status": "CrashLoopBackOff",
-            "age": "2d",
-            "namespace": "sre-demo",
-        },
-        "payment-service": {
-            "pod_name": "payment-service-abc12-p9xq1",
-            "cpu_usage": "450m",
-            "cpu_limit": "500m",
-            "cpu_percent": 90,
-            "memory_usage": "800Mi",
-            "memory_limit": "1Gi",
-            "memory_percent": 78,
-            "restarts": 2,
-            "status": "Running",
-            "age": "2d",
-            "namespace": "sre-demo",
-        },
-        "api-gateway": {
-            "pod_name": "api-gateway-6cf4d-m2np1",
-            "cpu_usage": "120m",
-            "cpu_limit": "500m",
-            "cpu_percent": 24,
-            "memory_usage": "210Mi",
-            "memory_limit": "512Mi",
-            "memory_percent": 41,
-            "restarts": 0,
-            "status": "Running",
-            "age": "2d",
-            "namespace": "sre-demo",
-        },
-        "auth-service": {
-            "pod_name": "auth-service-9ba3e-xt7kp",
-            "cpu_usage": "85m",
-            "cpu_limit": "500m",
-            "cpu_percent": 17,
-            "memory_usage": "175Mi",
-            "memory_limit": "512Mi",
-            "memory_percent": 34,
-            "restarts": 0,
-            "status": "Running",
-            "age": "2d",
-            "namespace": "sre-demo",
-        },
-    }
 
-    def get_mock_resources(self, services: list[str]) -> dict:
-        """
-        Returns realistic mock pod resource data per service.
-        
-        Args:
-            services: List of service names to get data for
-            
-        Returns:
-            Dictionary with resource data keyed by service name
-        """
+
+    def get_mock_resources(self,
+                        services: list[str]
+                        ) -> dict:
+        import hashlib
+        import random
+
         result = {}
 
-        for service in services:
-            if service in self.MOCK_DATA:
-                # Use predefined mock data
-                result[service] = self.MOCK_DATA[service].copy()
-            else:
-                # Generate reasonable default healthy stats for unknown services
-                cpu_percent = random.randint(10, 30)
-                memory_percent = random.randint(20, 40)
-                result[service] = {
-                    "pod_name": f"{service}-{random.randint(1000, 9999)}-{random.choice('abcdefghijkmnpqrstuvwxyz')}{random.choice('abcdefghijkmnpqrstuvwxyz')}{random.choice('abcdefghijkmnpqrstuvwxyz')}{random.choice('abcdefghijkmnpqrstuvwxyz')}",
-                    "cpu_usage": f"{cpu_percent * 5}m",
+        # Identify which service gets CRITICAL
+        # Prefer DB-like services
+        db_services = [
+            s for s in services
+            if any(k in s.lower()
+                   for k in [
+                       "database", "db",
+                       "postgres", "mysql",
+                       "redis", "mongo"
+                   ])
+        ]
+        critical_svc = (
+            db_services[0]
+            if db_services
+            else (services[0] if services else None)
+        )
+        warning_svc = next(
+            (s for s in services
+             if s != critical_svc),
+            None
+        )
+
+        for svc in services:
+            # Deterministic pod name per service
+            seed = int(
+                hashlib.md5(
+                    svc.encode()
+                ).hexdigest()[:8],
+                16
+            )
+            rng = random.Random(seed)
+            chars = (
+                "abcdefghijklmnopqrstuvwxyz"
+                "0123456789"
+            )
+            suffix1 = "".join(
+                rng.choices(chars, k=5)
+            )
+            suffix2 = "".join(
+                rng.choices(chars, k=5)
+            )
+            pod_name = f"{svc}-{suffix1}-{suffix2}"
+
+            if svc == critical_svc:
+                result[svc] = {
+                    "pod_name": pod_name,
+                    "cpu_usage": "920m",
+                    "cpu_limit": "1000m",
+                    "cpu_percent": 92,
+                    "memory_usage": "1.8Gi",
+                    "memory_limit": "2Gi",
+                    "memory_percent": 90,
+                    "restarts": 5,
+                    "status": "CrashLoopBackOff",
+                    "age": "2d",
+                    "namespace": "sre-demo"
+                }
+            elif svc == warning_svc:
+                result[svc] = {
+                    "pod_name": pod_name,
+                    "cpu_usage": "450m",
                     "cpu_limit": "500m",
-                    "cpu_percent": cpu_percent,
-                    "memory_usage": f"{memory_percent * 10}Mi",
+                    "cpu_percent": 90,
+                    "memory_usage": "800Mi",
+                    "memory_limit": "1Gi",
+                    "memory_percent": 78,
+                    "restarts": 2,
+                    "status": "Running",
+                    "age": "2d",
+                    "namespace": "sre-demo"
+                }
+            else:
+                result[svc] = {
+                    "pod_name": pod_name,
+                    "cpu_usage": "120m",
+                    "cpu_limit": "500m",
+                    "cpu_percent": 24,
+                    "memory_usage": "210Mi",
                     "memory_limit": "512Mi",
-                    "memory_percent": memory_percent,
+                    "memory_percent": 41,
                     "restarts": 0,
                     "status": "Running",
                     "age": "2d",
-                    "namespace": "sre-demo",
+                    "namespace": "sre-demo"
                 }
 
         return result
