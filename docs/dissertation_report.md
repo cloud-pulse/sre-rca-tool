@@ -180,6 +180,7 @@ No code changes needed for mode switches.
 - **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2` (384-dim).
 - **Storage**: ChromaDB persistent collection `sre_historical`.
 - **Retrieval**: cosine similarity, Top-K=5 matches.
+Color(RGB(27,108,168))
 
 Beats numpy RAG via efficient vector search and metadata filtering.
 

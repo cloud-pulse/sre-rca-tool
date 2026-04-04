@@ -1,6 +1,13 @@
-- found that we are not creating any incident in he historical/ we are just using teh existed, if a iincident happens i t need to be update to the historical incident, if the similartity of teh incident is < 40%
+- found that we are not creating any incident in he historical/ we are just using teh existed, if a iincident happens it need to be update to the historical incident, if the similartity of teh incident is < 40%
 - do i stil need the evaluations if yes can you explan me why ..?
-- i can see the actula moclk dat aunder the mock/ folder under teh jkubectl. decsribe, events, rollout, hstory .txt, why do n't i just merge teh bothe logs/ folder and mocl fole and use one folder for teh mock data ..?
+- i can see the actula mock data under the mock/ folder under teh jkubectl. decsribe, events, rollout, hstory .txt, why do n't i just merge teh bothe logs/ folder and mocl fole and use one folder for teh mock data ..?
 - validate all teh scrpts in teh scrips folder are still usful or not, 
 - got .env and conig.yaml can i merge bothe and use the .env and mu whole config file whith proper heading, comments 
 -just saw set-up .py file how can i use it ..? why it got py modeules as ai_sre, main and flags, why not only ai_sre..?
+- "Conclusion: RAG-augmented analysis provides richer context-aware RCA by "
+            "leveraging historical incident patterns.",this mustst me not hardcode in the comprator.py, 
+- in teh interactive CHAT there are no gaurd  garils and it working on who is the PM of india -low priority 
+- I want maintain a single .py file for config of the API, So let say if i am using any any localluy hosted LLM or any API fro  top companines liek Nvidia/ ChatGPT/ som otehr, I h=just wan to update the API url, API key ,
+- check and add a swicth between the kubernetes and local modle, I hope iths alredy ther but check teh functionality is perfecl, wotking or no, for now i wam using teh sam emodel to embeed thte data, reasoning, all stuff, can i config multiple models for multiple,works, if yes wna would be you suggestiosn, i wan to usse API provided by teh NVidia , from the build.nvidia, and also i got the copilot pro access so can i get get any apis to acces llm ofrm the co-pilot, 
+- coudl you think of any suggestin i =that i need to impreove for my project ..?
+- 
