@@ -134,9 +134,9 @@ check_file "logs/services/api-gateway.log" \
     2>/dev/null || true
 
 # Mock files
-check_dir "mock/kubectl/describe"
-check_dir "mock/kubectl/events"
-check_dir "mock/kubectl/rollout"
+check_dir "logs/mock/kubectl/describe"
+check_dir "logs/mock/kubectl/events"
+check_dir "logs/mock/kubectl/rollout"
 
 # ══════════════════════════════════════════
 section "2. Python Imports"
@@ -899,77 +899,61 @@ f.print_remediation_steps(result)
 "
 
 # ══════════════════════════════════════════
-section "12. NL Parser"
+section "12. Command Registry"
 # ══════════════════════════════════════════
 
-check_python "Parser loads services dynamically" "
+check_python "Command registry resolves analyse" "
 import sys, os
 sys.path.insert(0, os.getcwd())
-from ai_sre import NLParser
-from core.service_graph import ServiceGraph
-p = NLParser()
-g = ServiceGraph()
-services = g.get_all_service_names()
-assert len(p.known_services) == len(services)
-for svc in services:
-    assert svc in p.known_services
+from core.command_registry import resolve
+result = resolve('analyse payment-service')
+assert result is not None
+handler, args = result
+assert 'payment-service' in '-'.join(args) or len(args) > 0
 "
 
-check_python "Parser intent detection works" "
+check_python "Command registry resolves status" "
 import sys, os
 sys.path.insert(0, os.getcwd())
-from ai_sre import NLParser
-from core.service_graph import ServiceGraph
-p = NLParser()
-g = ServiceGraph()
-services = g.get_all_service_names()
-tests = [
-    ('compare baseline vs rag', 'compare'),
-    ('status', 'status'),
-    ('help', 'help'),
-    ('clear cache', 'cache_clear'),
-    ('watch logs', 'watch'),
-]
-for text, expected in tests:
-    result = p.parse(text)
-    assert result['intent'] == expected, (
-        f'Expected {expected} for \"{text}\" '
-        f'but got {result[\"intent\"]}'
-    )
+from core.command_registry import resolve
+result = resolve('status')
+assert result is not None
 "
 
-check_python "Parser extracts service names" "
+check_python "Command registry resolves help" "
 import sys, os
 sys.path.insert(0, os.getcwd())
-from ai_sre import NLParser
-from core.service_graph import ServiceGraph
-p = NLParser()
-g = ServiceGraph()
-services = g.get_all_service_names()
-for svc in services:
-    result = p.parse(
-        f'check what is wrong with {svc}'
-    )
-    assert result['service'] == svc, (
-        f'Expected {svc} but got '
-        f'{result[\"service\"]}'
-    )
+from core.command_registry import resolve
+result = resolve('help')
+assert result is not None
 "
 
-check_python "Parser resolves partial names" "
+check_python "LogCleaner importable" "
 import sys, os
 sys.path.insert(0, os.getcwd())
-from ai_sre import NLParser
-from core.service_graph import ServiceGraph
-p = NLParser()
-g = ServiceGraph()
-services = g.get_all_service_names()
-for svc in services:
-    partial = svc.split('-')[0]
-    result = p.parse(
-        f'why is {partial} failing'
-    )
-    assert result['service'] is not None
+from core.log_cleaner import LogCleaner
+c = LogCleaner()
+assert hasattr(c, 'clean')
+assert hasattr(c, 'get_stats')
+"
+
+check_python "WindowAnalyzer importable" "
+import sys, os
+sys.path.insert(0, os.getcwd())
+from core.window_analyzer import WindowAnalyzer
+w = WindowAnalyzer()
+assert hasattr(w, 'analyse')
+assert w.WINDOW_1_SIZE == 500
+assert w.CONFIDENCE_THRESHOLD == 60
+"
+
+check_python "IncidentRecorder importable" "
+import sys, os
+sys.path.insert(0, os.getcwd())
+from core.incident_recorder import IncidentRecorder
+r = IncidentRecorder()
+assert hasattr(r, 'check_and_save')
+assert r.SIMILARITY_THRESHOLD == 0.40
 "
 
 # ══════════════════════════════════════════
@@ -1181,15 +1165,11 @@ section "16. Scripts"
 check_file "scripts/check_env.sh"
 check_file "scripts/ai-sre.sh"
 check_file "scripts/setup_alias.sh"
-check_file "scripts/setup_minikube.sh" \
-    2>/dev/null || true
+check_file "scripts/setup_minikube.sh"
 check_file "scripts/simulate_new_errors.sh"
-check_file "scripts/verify_task_f.sh"
-check_file "scripts/verify_task_g.sh"
-check_file "scripts/verify_task_h.sh"
-check_file "scripts/verify_task_i.sh"
-check_file "scripts/verify_task_j.sh"
-check_file "scripts/verify_task_k.sh"
+check_file "scripts/quick_demo.sh"
+check_file "scripts/verify_final.sh"
+check_file "scripts/README.md"
 
 echo "  Testing bash launcher:"
 if bash scripts/ai-sre.sh help \

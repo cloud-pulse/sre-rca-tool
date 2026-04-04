@@ -51,8 +51,7 @@ def _parse_bool(value: str,
     else:
         return default
 
-def _parse_int(value: str,
-               default: int = 0) -> int:
+def _parse_int(value: str,default: int = 0) -> int:
     # Parse string to int
     # return default if value is None or invalid
     if not value:
@@ -73,62 +72,51 @@ def _get(key: str, default: str = "") -> str:
     )
 
 # ─── SYSTEM FLAGS ─────────────────────────────
-DEBUG         = _parse_bool(_get("SYSTEM_DEBUG",
-                                  "false"))
+DEBUG         = _parse_bool(_get("SYSTEM_DEBUG","false"))
 LOG_LEVEL     = _get("SYSTEM_LOG_LEVEL", "INFO")
 
 # ─── UI FLAGS ─────────────────────────────────
-SUPPRESS_LOGS = _parse_bool(
-    _get("UI_SUPPRESS_LOGS", "true"), True
-)
-RICH_OUTPUT   = _parse_bool(
-    _get("UI_RICH_OUTPUT", "true"), True
-)
-SHOW_TIMESTAMPS = _parse_bool(
-    _get("UI_SHOW_TIMESTAMPS", "true"), True
-)
+SUPPRESS_LOGS = _parse_bool(_get("UI_SUPPRESS_LOGS", "true"), True)
+RICH_OUTPUT   = _parse_bool(_get("UI_RICH_OUTPUT", "true"), True)
+SHOW_TIMESTAMPS = _parse_bool(_get("UI_SHOW_TIMESTAMPS", "true"), True)
 
 # ─── LLM FLAGS ────────────────────────────────
-LLM_CACHE_ENABLED  = _parse_bool(
-    _get("LLM_CACHE_ENABLED", "true"), True
-)
-LLM_CACHE_TTL      = _parse_int(
-    _get("LLM_CACHE_TTL_SECONDS", "3600"), 3600
-)
-LLM_WARMUP         = _parse_bool(
-    _get("LLM_WARMUP_ON_START", "true"), True
-)
-LLM_KEEP_ALIVE     = _parse_bool(
-    _get("LLM_KEEP_ALIVE", "true"), True
-)
-LLM_MAX_TOKENS     = _parse_int(
-    _get("LLM_MAX_TOKENS", "500"), 500
-)
-LLM_TIMEOUT        = _parse_int(
-    _get("LLM_TIMEOUT_SECONDS", "300"), 300
-)
+LLM_CACHE_ENABLED  = _parse_bool(_get("LLM_CACHE_ENABLED", "true"), True)
+LLM_CACHE_TTL      = _parse_int(_get("LLM_CACHE_TTL_SECONDS", "3600"), 3600)
+LLM_WARMUP         = _parse_bool(_get("LLM_WARMUP_ON_START", "true"), True)
+LLM_KEEP_ALIVE     = _parse_bool(_get("LLM_KEEP_ALIVE", "true"), True)
+LLM_MAX_TOKENS     = _parse_int(_get("LLM_MAX_TOKENS", "2000"), 1000)
+LLM_TIMEOUT        = _parse_int(_get("LLM_TIMEOUT_SECONDS", "300"), 300)
+LLM_PROVIDER           = _get("LLM_PROVIDER", "ollama")
+NVIDIA_API_KEY         = _get("NVIDIA_API_KEY", "")
+LLM_BASE_URL           = _get("LLM_BASE_URL","https://integrate.api.nvidia.com/v1")
+LLM_REASONING_MODEL    = _get("LLM_REASONING_MODEL","meta/llama-3.3-70b-instruct")
+LLM_REASONING_FALLBACK = _get("LLM_REASONING_FALLBACK","mistralai/mistral-small-24b-instruct")
+LLM_EMBEDDING_MODEL    = _get("LLM_EMBEDDING_MODEL","nvidia/nv-embed-v1")
+LLM_EMBEDDING_FALLBACK = _get("LLM_EMBEDDING_FALLBACK","nvidia/llama-nemotron-embed-1b-v2")
+DEMO_MODE              = _parse_bool(_get("DEMO_MODE", "false"))
+LOG_WINDOW_SIZE        = _parse_int(_get("LOG_WINDOW_SIZE", "500"), 500)
+LOG_CONFIDENCE_THRESHOLD = _parse_int(_get("LOG_CONFIDENCE_THRESHOLD","60"), 60)
+LOG_FILTER_PATTERNS    = _get("LOG_FILTER_PATTERNS","health,metrics,ready,live,heartbeat")
+RAG_NEW_INCIDENT_THRESHOLD = _parse_int(_get("RAG_NEW_INCIDENT_THRESHOLD","40"), 40)
+OLLAMA_URL             = _get("OLLAMA_URL","http://localhost:11434/api/generate")
+OLLAMA_MODEL           = _get("OLLAMA_MODEL", "phi3:mini")
 
 # ─── SOURCE FLAGS ─────────────────────────────
-USE_KUBERNETES     = _parse_bool(
-    _get("SOURCE_KUBERNETES", "false"), False
-)
-K8S_NAMESPACE      = _get(
-    "SOURCE_NAMESPACE", "default"
-)
-LOG_TAIL_LINES     = _parse_int(
-    _get("SOURCE_LOG_TAIL_LINES", "100"), 100
-)
+USE_KUBERNETES     = _parse_bool(_get("SOURCE_KUBERNETES", "false"), False)
+K8S_NAMESPACE      = _get("SOURCE_NAMESPACE", "default")
+LOG_TAIL_LINES     = _parse_int(_get("SOURCE_LOG_TAIL_LINES", "100"), 100)
 
 # ─── RAG FLAGS ────────────────────────────────
-RAG_ENABLED        = _parse_bool(
-    _get("RAG_ENABLED", "true"), True
-)
-RAG_TOP_K          = _parse_int(
-    _get("RAG_TOP_K", "3"), 3
-)
-RAG_THRESHOLD      = _parse_int(
-    _get("RAG_SIMILARITY_THRESHOLD", "60"), 60
-)
+RAG_ENABLED        = _parse_bool(_get("RAG_ENABLED", "true"), True)
+RAG_TOP_K          = _parse_int(_get("RAG_TOP_K", "3"), 3)
+RAG_THRESHOLD      = _parse_int(_get("RAG_SIMILARITY_THRESHOLD", "60"), 60)
+
+# ─── CONFIG VALUES (merged from config.py) ────
+HISTORICAL_LOGS_DIR    = _get("HISTORICAL_LOGS_DIR","logs/historical")
+CHROMA_DB_PATH         = _get("CHROMA_DB_PATH",".chromadb")
+DEFAULT_LOG_PATH       = _get("SOURCE_LOG_PATH","logs/test.log")
+EMBEDDING_MODEL        = _get("EMBEDDING_MODEL","all-MiniLM-L6-v2")
 
 # ─── HELPER FUNCTIONS ─────────────────────────
 
@@ -172,12 +160,30 @@ def get_all_flags() -> dict:
         "LLM_KEEP_ALIVE":       LLM_KEEP_ALIVE,
         "LLM_MAX_TOKENS":       LLM_MAX_TOKENS,
         "LLM_TIMEOUT":          LLM_TIMEOUT,
+        "LLM_PROVIDER":         LLM_PROVIDER,
+        "NVIDIA_API_KEY":       NVIDIA_API_KEY,
+        "LLM_BASE_URL":         LLM_BASE_URL,
+        "LLM_REASONING_MODEL":  LLM_REASONING_MODEL,
+        "LLM_REASONING_FALLBACK": LLM_REASONING_FALLBACK,
+        "LLM_EMBEDDING_MODEL":  LLM_EMBEDDING_MODEL,
+        "LLM_EMBEDDING_FALLBACK": LLM_EMBEDDING_FALLBACK,
+        "DEMO_MODE":            DEMO_MODE,
+        "LOG_WINDOW_SIZE":      LOG_WINDOW_SIZE,
+        "LOG_CONFIDENCE_THRESHOLD": LOG_CONFIDENCE_THRESHOLD,
+        "LOG_FILTER_PATTERNS":  LOG_FILTER_PATTERNS,
+        "RAG_NEW_INCIDENT_THRESHOLD": RAG_NEW_INCIDENT_THRESHOLD,
+        "OLLAMA_URL":           OLLAMA_URL,
+        "OLLAMA_MODEL":         OLLAMA_MODEL,
         "USE_KUBERNETES":       USE_KUBERNETES,
         "K8S_NAMESPACE":        K8S_NAMESPACE,
         "LOG_TAIL_LINES":       LOG_TAIL_LINES,
         "RAG_ENABLED":          RAG_ENABLED,
         "RAG_TOP_K":            RAG_TOP_K,
-        "RAG_THRESHOLD":        RAG_THRESHOLD,
+"RAG_THRESHOLD":        RAG_THRESHOLD,
+        "HISTORICAL_LOGS_DIR":  HISTORICAL_LOGS_DIR,
+        "CHROMA_DB_PATH":       CHROMA_DB_PATH,
+        "DEFAULT_LOG_PATH":     DEFAULT_LOG_PATH,
+        "EMBEDDING_MODEL":      EMBEDDING_MODEL,
     }
 
 def print_flags():
@@ -229,21 +235,14 @@ def print_flags():
         for key, value in flags.items():
             print(f"  {key}: {value}")
 
+def is_demo_mode() -> bool:
+    return DEMO_MODE
+
 # ─── Also update config.py values ─────────────
 # Override config.py values with flag values
 # so existing code that imports from config
 # still works but now respects flags
-def sync_to_config():
-    # Import config and update its values
-    # with flag-derived values
-    try:
-        import config
-        config.TOP_K_RETRIEVAL = RAG_TOP_K
-    except ImportError:
-        pass
 
-# Run sync on import
-sync_to_config()
 
 if __name__ == "__main__":
 

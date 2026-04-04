@@ -15,8 +15,8 @@ from core.logger import get_logger
 
 log = get_logger("rag_engine")
 
-from sentence_transformers import SentenceTransformer
 import chromadb
+from core.llm_provider import provider
 
 # Allow imports to work when running this file directly
 if __name__ == "__main__" and __package__ is None:
@@ -34,29 +34,24 @@ class RAGEngine:
 
     def __init__(self, historical_logs_dir: str):
         """Initialize RAG engine with ChromaDB and embedding model."""
-        from config import TOP_K_RETRIEVAL, CHROMA_DB_PATH, EMBEDDING_MODEL
+        from flags import RAG_TOP_K as TOP_K_RETRIEVAL, CHROMA_DB_PATH
         
         self.historical_logs_dir = historical_logs_dir
         self.top_k = TOP_K_RETRIEVAL
         self.chroma_path = CHROMA_DB_PATH
-        self.embedding_model_name = EMBEDDING_MODEL
         
-        # Step 1 — Load sentence-transformer model
-        self.embedder = SentenceTransformer(self.embedding_model_name)
-        log.step(f"Embedding model loaded: {self.embedding_model_name}")
-        
-        # Step 2 — Initialize ChromaDB persistent client
+        # Step 1 — Initialize ChromaDB persistent client
         self.chroma_client = chromadb.PersistentClient(path=self.chroma_path)
         log.step(f"ChromaDB initialized at {self.chroma_path}")
         
-        # Step 3 — Get or create collection
+        # Step 2 — Get or create collection
         self.collection = self.chroma_client.get_or_create_collection(
             name="sre_historical_incidents",
             metadata={"hnsw:space": "cosine"}
         )
         log.step("Collection ready: sre_historical_incidents")
         
-        # Step 4 — Index historical logs
+        # Step 3 — Index historical logs
         self._index_historical_logs()
         log.success("RAG engine ready.")
 
@@ -181,7 +176,7 @@ class RAGEngine:
                 continue
             
             # c. Generate embeddings for all chunks at once
-            embeddings = self.embedder.encode(chunks)
+            embeddings = provider.embed(chunks)
             
             # d. Add to ChromaDB collection
             ids = [f"{filename}_chunk_{i}" for i in range(len(chunks))]
@@ -200,7 +195,7 @@ class RAGEngine:
             
             self.collection.add(
                 ids=ids,
-                embeddings=embeddings.tolist(),
+                embeddings=embeddings,
                 documents=chunks,
                 metadatas=metadatas
             )
@@ -259,11 +254,11 @@ class RAGEngine:
             top_k = self.top_k
         
         # Step 1: Embed the query text
-        query_embedding = self.embedder.encode([query_text])
+        query_embedding = provider.embed([query_text])
         
         # Step 2: Query ChromaDB collection
         results = self.collection.query(
-            query_embeddings=[query_embedding[0].tolist()],
+            query_embeddings=[query_embedding[0]],
             n_results=top_k,
             include=["documents", "metadatas", "distances"]
         )
@@ -389,7 +384,7 @@ class RAGEngine:
 
 
 if __name__ == "__main__":
-    from config import HISTORICAL_LOGS_DIR
+    from flags import HISTORICAL_LOGS_DIR
     from core.log_loader import LogLoader
     from core.log_processor import LogProcessor
     from core.context_builder import ContextBuilder

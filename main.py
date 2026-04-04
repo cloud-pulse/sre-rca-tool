@@ -27,7 +27,7 @@ from core.llm_analyzer import LLMAnalyzer
 from core.rag_engine import RAGEngine
 from output.rca_formatter import RCAFormatter
 from evaluation.comparator import Comparator
-from config import HISTORICAL_LOGS_DIR, DEFAULT_LOG_PATH
+from flags import HISTORICAL_LOGS_DIR, DEFAULT_LOG_PATH
 from flags import LLM_WARMUP, LLM_CACHE_TTL
 
 console = Console()

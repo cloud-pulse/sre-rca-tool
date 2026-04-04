@@ -50,6 +50,13 @@ class LogLoader:
             log.warn(f"Empty file: {filepath}")
             return []
             
+        from core.log_cleaner import LogCleaner
+        _cleaner = LogCleaner()
+        _original = extracted_lines
+        extracted_lines = _cleaner.clean(extracted_lines)
+        stats = _cleaner.get_stats(_original, extracted_lines)
+        log.info(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
+
         log.step(f"Loaded {len(extracted_lines)} lines from {filepath}")
         return extracted_lines
 
@@ -211,6 +218,13 @@ class LogLoader:
         except Exception:
             pass
 
+        from core.log_cleaner import LogCleaner
+        _cleaner = LogCleaner()
+        _original = combined
+        combined = _cleaner.clean(combined)
+        stats = _cleaner.get_stats(_original, combined)
+        log.info(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
+
         log.step(
             f"Fetched {len(combined)} log lines from {len(pod_names)} pods in {namespace}"
         )
@@ -254,7 +268,15 @@ class LogLoader:
         
         if not filtered:
             log.warn(f"No logs found for {service_name}")
+            return filtered
             
+        from core.log_cleaner import LogCleaner
+        _cleaner = LogCleaner()
+        _original = filtered
+        filtered = _cleaner.clean(filtered)
+        stats = _cleaner.get_stats(_original, filtered)
+        log.info(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
+
         return filtered
 
     def load_container_logs(self, service_name: str, container_name: str, fallback_log: str = "logs/test.log") -> list[str]:
@@ -276,7 +298,7 @@ class LogLoader:
         return results
 
     def load_mock_kubectl(self, resource_type: str, scenario: str) -> str:
-        target = f"mock/kubectl/{resource_type}/{scenario}.txt"
+        target = f"logs/mock/kubectl/{resource_type}/{scenario}.txt"
         if os.path.exists(target):
             try:
                 with open(target, 'r', encoding='utf-8') as f:

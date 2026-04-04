@@ -4,7 +4,9 @@ Hey developer! 👋 This is your complete guide to understanding, running, exten
 
 **Project Location**: `c:/playground/sre-rca-tool`  
 **Virtual Environment**: `jarvis` (Windows: `jarvis\Scripts\activate.bat`)  
-**Entry Points**: `python main.py`, `python ai_sre.py`, or `ai-sre` (after `pip install -e .`)  
+**Primary Entry Point**: `python ai_sre.py` (interactive REPL + single commands)  
+**Internal CLI**: `python main.py` (called internally, not for direct use)  
+**LLM Provider**: `Nvidia NIM (meta/llama-3.3-70b-instruct)`  
 
 Let's dive in!
 
@@ -14,8 +16,8 @@ Start here if you just want to get it running **right now**.
 
 ### 1.1 Prerequisites
 - **Python 3.12** (use `pyenv` or download from python.org)
-- **Ollama** (download from [ollama.com/download](https://ollama.com/download))
-- **phi3:mini model** (`ollama pull phi3:mini`)
+- **Nvidia NIM API key** — get free key from https://build.nvidia.com
+- Ollama optional (fallback only, ~5min per response on CPU)
 - **Minikube** (optional, for Kubernetes mode testing)
 - **Git** (to clone if needed)
 
@@ -36,7 +38,7 @@ pip install -e .
 python main.py status
 ```
 
-### 1.3 Start Ollama (Always Required)
+### 1.3 Start Ollama (Optional Fallback)
 
 **Terminal 1** (keep running):
 ```bash
@@ -52,19 +54,29 @@ ollama pull phi3:mini
 
 ```bash
 # Activate venv
-jarvis\Scripts\activate.bat
+source jarvis/Scripts/activate
 
 # System status
-python main.py status
+python ai_sre.py status
 
-# Simple log analysis
-python main.py analyze logs/test.log
+# Set your Nvidia API key in .env
+# NVIDIA_API_KEY=nvapi-xxxxxxxxxxxx
 
-# Natural language investigation
-python ai_sre.py "check payment-service"
+# RAG-based RCA
+python ai_sre.py analyse payment-service
 
-# Compare baseline vs RAG
-python main.py compare logs/test.log
+# Baseline (no RAG)
+python ai_sre.py analyse payment-service --baseline
+
+# Side-by-side comparison + saved report
+python ai_sre.py analyse payment-service --compare
+
+# Clean logs
+python ai_sre.py clean-logs logs/test.log
+
+# General SRE question (no command needed)
+python ai_sre.py
+> what is a circuit breaker
 ```
 
 🎉 You're live! RCA output shows ranked causes, timeline, and `kubectl` fixes.
@@ -77,7 +89,6 @@ Here's the full directory tree with what each part does:
 sre-rca-tool/
 ├── ai_sre.py                   # 🌟 Natural language entrypoint (ai-sre "check payment")
 ├── main.py                     # Click CLI (python main.py analyze logs/test.log)
-├── config.py                   # Static config (paths, regexes, constants)
 ├── flags.py                    # .env feature flag reader (SOURCE_KUBERNETES=true)
 ├── setup.py                    # pip install -e . setup
 ├── services.yaml               # Service dependencies (payment → database)
@@ -92,6 +103,11 @@ sre-rca-tool/
 │   ├── context_builder.py      # LLM prompt preparation (trim + format)
 │   ├── llm_analyzer.py         # Ollama client (streaming + parsing)
 │   ├── llm_cache.py            # TTL-based response caching (SHA256 prompt → JSON)
+│   ├── log_cleaner.py          # Noise filter (health probes, metrics, debug spam)
+│   ├── window_analyzer.py      # Sliding window RCA with confidence threshold
+│   ├── incident_recorder.py    # Auto-save new incidents to historical + ChromaDB
+│   ├── llm_provider.py         # Unified LLM client (Nvidia NIM + Ollama fallback)
+│   ├── command_registry.py     # Command registry pattern (replaces NLParser)
 │   ├── rag_engine.py           # ChromaDB + sentence-transformers RAG
 │   ├── service_graph.py        # Blast radius from services.yaml + log discovery
 │   └── sre_investigator.py     # 🎯 Main SRE orchestrator (investigate())
@@ -103,8 +119,8 @@ sre-rca-tool/
 │   ├── test.log                # Main demo log (DB timeout + OOM)
 │   ├── services/               # payment-service.log, database-service.log, etc.
 │   └── historical/             # Past incidents (# RESOLVED: tag) for RAG
-├── mock/                       # 🎭 Fake kubectl for local dev
-│   └── kubectl/
+├── logs/mock/                  # 🎭 Fake kubectl for local dev
+│   └── kubectl/                # Fake kubectl responses (describe/events/rollout)
 │       ├── describe/           # kubectl describe pod payment-xyz
 │       ├── events/             # kubectl get events
 │       └── rollout/            # kubectl rollout history
@@ -122,42 +138,24 @@ sre-rca-tool/
 Copy `.env.example` to `.env` and tweak. Every flag explained:
 
 ```env
-# Core debugging
-SYSTEM_DEBUG=false
-# → true: See LLM prompts, timings, raw responses, internal steps
+# === LLM PROVIDER ===
+LLM_PROVIDER=nvidia
+NVIDIA_API_KEY=nvapi-xxxxxxxxxxxx
+LLM_REASONING_MODEL=meta/llama-3.3-70b-instruct
+LLM_REASONING_FALLBACK=mistralai/mistral-small-24b-instruct
+LLM_EMBEDDING_MODEL=nvidia/nv-embed-v1
 
-UI_SUPPRESS_LOGS=true
-# → false: Verbose HuggingFace/ChromaDB output (debug libraries)
+# === DEMO MODE ===
+DEMO_MODE=false
+# → true: uses mock data, cached LLM, looks identical externally
 
-# LLM optimizations
-LLM_CACHE_ENABLED=true
-# → false: Always fresh LLM call (no cache hits)
+# === SLIDING WINDOW ===
+LOG_WINDOW_SIZE=500
+LOG_CONFIDENCE_THRESHOLD=60
 
-LLM_WARMUP_ON_START=true
-# → false: No pre-load (first analysis slow ~60s)
-
-LLM_MAX_TOKENS=500
-# → 200: Faster/less detailed | 1000: Slower/more verbose
-
-LLM_KEEP_ALIVE_MINUTES=10
-# → Model stays loaded this long
-
-# Data sources
-SOURCE_KUBERNETES=false
-# → true: Live kubectl calls (needs cluster running)
-
-SOURCE_NAMESPACE=default
-# → sock-shop, sre-demo, kube-system, etc.
-
-# RAG control
-RAG_ENABLED=true
-# → false: Skip historical retrieval (pure LLM)
-
-RAG_TOP_K=3
-# → 1-10 similar incidents to include
-
-RAG_CHUNK_SIZE=20
-# → Lines per embedding chunk
+# === INCIDENT AUTO-SAVE ===
+RAG_NEW_INCIDENT_THRESHOLD=40
+# → save if similarity < 40%
 ```
 
 **Toggle example**:
@@ -472,12 +470,10 @@ Run `ai-sre "check api-gateway"` → sees "calling my-new-service" → "Add to s
 
 | Issue | Cause | Fix |
 |-------|-------|-----|
-| LLM 2-5min delay | phi3:mini CPU | 1. `LLM_WARMUP_ON_START=true`<br>2. Run twice (cache)<br>3. `LLM_MAX_TOKENS=200`<br>4. GPU/cloud Ollama |
-| Cache wrong output | Stale cache | `python main.py cache --clear` |
-| ModuleNotFoundError | Wrong dir | `cd c:/playground/sre-rca-tool`<br>`jarvis\Scripts\activate.bat` |
-| ChromaDB empty | First run | Auto-indexes, check `./.chromadb/` |
-| services.yaml missing | Subdir run | Always from project root |
-| Ollama refused | Not running | `ollama serve` (separate terminal)<br>`ollama pull phi3:mini` |
+| Nvidia 429 error | Rate limit on free tier | Wait 60s, retry. Tool auto-retries 3x |
+| Embedding dimension mismatch | Old ChromaDB collection (384-dim) vs NIM (4096-dim) | Delete .chromadb/ folder and re-run |
+| LLM timeout | NVIDIA_API_KEY is placeholder | Set real key from https://build.nvidia.com |
+| config.py ImportError | Old import still in code | Replace with `from flags import X` |
 
 ## 10. MERMAID DIAGRAMS
 
