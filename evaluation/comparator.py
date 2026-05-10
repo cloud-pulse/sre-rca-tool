@@ -391,7 +391,7 @@ class Comparator:
 
         panel = Panel(
             summary,
-            title="Dissertation Evaluation Result",
+            title="Evaluation Result",
             border_style="bold magenta",
             padding=(1, 2),
         )
