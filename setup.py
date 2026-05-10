@@ -20,6 +20,7 @@ setup(
         "chromadb>=0.4.0",
         "numpy>=1.24.0",
         "pyyaml>=6.0.0",
+        "kubernetes>=30.1.0",
     ],
     entry_points={
         "console_scripts": [

@@ -65,6 +65,8 @@ class ContextBuilder:
         collector = ResourceCollector()
         critical_resources = {}
         for service, data in resources.items():
+            if not isinstance(data, dict):
+                continue
             if (data.get('cpu_percent', 0) > 80 or 
                 data.get('memory_percent', 0) > 80 or
                 data.get('restarts', 0) > 3 or
@@ -74,6 +76,24 @@ class ContextBuilder:
         # Format logs and resources
         formatted_logs = self.format_logs_for_prompt(filtered_entries)
         formatted_resources = self.format_resources_for_prompt(resources)
+        k8s_snapshot = resources.get("_k8s_snapshot")
+        k8s_findings = []
+        if k8s_snapshot:
+            try:
+                from k8s.rca_engine import K8sRCAEngine
+                k8s_findings = K8sRCAEngine().generate_rca_for_all(k8s_snapshot)
+            except Exception as exc:
+                log.warn(f"Failed to build Kubernetes findings context: {exc}")
+
+        if k8s_findings:
+            formatted_resources += "\n\n=== KUBERNETES RCA FINDINGS ===\n"
+            for finding in k8s_findings:
+                formatted_resources += (
+                    f"- {finding.service} [{finding.namespace}] "
+                    f"status={finding.status} severity={finding.severity} "
+                    f"root_cause={finding.root_cause}\n"
+                )
+            formatted_resources += "=== END OF KUBERNETES RCA FINDINGS ==="
         
         return {
             "error_count": error_count,
@@ -85,7 +105,9 @@ class ContextBuilder:
             "log_window": log_window,
             "critical_resources": critical_resources,
             "formatted_logs": formatted_logs,
-            "formatted_resources": formatted_resources
+            "formatted_resources": formatted_resources,
+            "k8s_snapshot": k8s_snapshot,
+            "k8s_findings": k8s_findings,
         }
 
     def format_logs_for_prompt(self, entries: list[dict]) -> str:

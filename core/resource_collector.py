@@ -21,6 +21,23 @@ class ResourceCollector:
     Phase 1 uses realistic mock data. Real kubectl implementation in Task 23.
     """
 
+    def __init__(self):
+        self._k8s_client = None
+        self._k8s_collector = None
+        try:
+            from flags import ENABLE_KUBERNETES_MODE, KUBE_NAMESPACES, KUBE_CONFIG_PATH, KUBE_CONTEXT
+            if ENABLE_KUBERNETES_MODE:
+                from k8s.client import K8sClientManager
+                from k8s.collector import K8sCollector
+                _mgr = K8sClientManager(
+                    namespaces=KUBE_NAMESPACES,
+                    kubeconfig_path=KUBE_CONFIG_PATH,
+                    context=KUBE_CONTEXT
+                )
+                if _mgr.is_available():
+                    self._k8s_collector = K8sCollector(_mgr)
+        except Exception as exc:
+            log.debug(f"K8s collector initialization skipped: {exc}")
 
 
     def get_mock_resources(self,
@@ -132,6 +149,8 @@ class ResourceCollector:
         critical = []
 
         for service, data in resources.items():
+            if not isinstance(data, dict):
+                continue
             is_critical = False
 
             # Check resource thresholds
@@ -169,6 +188,8 @@ class ResourceCollector:
         # Sort services for consistent output
         for service in sorted(resources.keys()):
             data = resources[service]
+            if not isinstance(data, dict):
+                continue
             lines.append(f"[{service}]")
 
             # Pod name
@@ -417,7 +438,7 @@ class ResourceCollector:
                       services: list[str],
                       namespace: str = "default",
                       use_mock: bool = None) -> dict:
-        from flags import USE_KUBERNETES
+        from flags import USE_KUBERNETES, KUBE_NAMESPACES
 
         if use_mock is True:
             active_mock = True
@@ -429,6 +450,54 @@ class ResourceCollector:
         if active_mock:
             log.info("[dim]Resources: mock data[/]")
             return self.get_mock_resources(services)
+
+        # Preferred Kubernetes SDK path (initialized in __init__)
+        if self._k8s_collector is not None:
+            namespaces = KUBE_NAMESPACES or [namespace]
+            snapshot = self._k8s_collector.collect_all(namespaces)
+            result = {}
+            for service in services:
+                matched = None
+                for pod in snapshot.pods:
+                    if pod.name.startswith(service) or service in pod.name:
+                        matched = pod
+                        break
+
+                if matched:
+                    result[service] = {
+                        "pod_name": matched.name,
+                        "cpu_usage": "0m",
+                        "cpu_limit": "0m",
+                        "cpu_percent": 0,
+                        "memory_usage": "0Mi",
+                        "memory_limit": "0Mi",
+                        "memory_percent": 0,
+                        "restarts": matched.restart_count,
+                        "status": (
+                            "CrashLoopBackOff"
+                            if any(cs.state_reason == "CrashLoopBackOff" for cs in matched.container_states)
+                            else ("OOMKilled" if any(cs.state_reason == "OOMKilled" for cs in matched.container_states) else matched.phase)
+                        ),
+                        "namespace": matched.namespace,
+                        "k8s_logs": matched.logs,
+                        "k8s_previous_logs": matched.previous_logs,
+                    }
+                else:
+                    result[service] = {
+                        "pod_name": f"{service}-unknown",
+                        "cpu_usage": "0m",
+                        "cpu_limit": "0m",
+                        "cpu_percent": 0,
+                        "memory_usage": "0Mi",
+                        "memory_limit": "0Mi",
+                        "memory_percent": 0,
+                        "restarts": 0,
+                        "status": "Running",
+                        "namespace": namespace,
+                    }
+
+            result["_k8s_snapshot"] = snapshot
+            return result
 
         log.info(f"[dim]Resources: kubectl (namespace={namespace})[/]")
 

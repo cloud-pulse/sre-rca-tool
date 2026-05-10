@@ -10,6 +10,7 @@ from rich.style import Style
 import contextlib
 import sys
 import os
+import json
 
 # Fix Unicode block characters on Windows
 if sys.platform == "win32":
@@ -654,11 +655,93 @@ class RCAFormatter:
         self.print_remediation_steps(result)
         self.console.print(Rule("End of Investigation Report", style="dim"))
 
+    def print_k8s_rca(self, finding):
+        severity = getattr(finding, "severity", "Info")
+        color = {
+            "Critical": "red",
+            "High": "yellow",
+            "Medium": "blue",
+            "Low": "green",
+            "Info": "white",
+        }.get(severity, "white")
+
+        content = Text()
+        content.append(f"SERVICE: {getattr(finding, 'service', 'unknown')}\n", style="bold white")
+        content.append(f"NAMESPACE: {getattr(finding, 'namespace', 'default')}\n", style="white")
+        content.append(f"STATUS: {getattr(finding, 'status', 'Unknown')}\n", style="white")
+        content.append(f"SEVERITY: {severity}\n\n", style=f"bold {color}")
+        content.append("ROOT CAUSE:\n", style="bold red")
+        content.append(f"{getattr(finding, 'root_cause', 'N/A')}\n\n", style="white")
+
+        content.append("EVIDENCE:\n", style="bold cyan")
+        for item in getattr(finding, "evidence", [])[:8]:
+            content.append(f"• {item}\n", style="white")
+
+        content.append("\nRECOMMENDATIONS:\n", style="bold green")
+        for rec in getattr(finding, "recommendations", [])[:5]:
+            content.append(f"• {rec}\n", style="white")
+
+        self.console.print(
+            Panel(
+                content,
+                title="Kubernetes RCA Report",
+                border_style=color,
+                expand=True,
+            )
+        )
+
+    def print_k8s_dashboard(self, findings):
+        table = Table(title="Kubernetes RCA Dashboard", box=box.ROUNDED, show_lines=True)
+        table.add_column("Service", style="bold white")
+        table.add_column("Namespace", style="dim white")
+        table.add_column("Status", justify="center")
+        table.add_column("Severity", justify="center")
+        table.add_column("Root Cause", style="white")
+
+        for finding in findings or []:
+            severity = getattr(finding, "severity", "Info")
+            sev_style = {
+                "Critical": "bold red",
+                "High": "bold yellow",
+                "Medium": "bold blue",
+                "Low": "bold green",
+            }.get(severity, "white")
+            table.add_row(
+                str(getattr(finding, "service", "unknown")),
+                str(getattr(finding, "namespace", "default")),
+                str(getattr(finding, "status", "Unknown")),
+                f"[{sev_style}]{severity}[/]",
+                str(getattr(finding, "root_cause", "N/A"))[:90],
+            )
+
+        self.console.print(table)
+
+    def export_k8s_rca_json(self, findings) -> str:
+        payload = []
+        for finding in findings or []:
+            payload.append({
+                "service": getattr(finding, "service", "unknown"),
+                "namespace": getattr(finding, "namespace", "default"),
+                "status": getattr(finding, "status", "Unknown"),
+                "severity": getattr(finding, "severity", "Info"),
+                "root_cause": getattr(finding, "root_cause", ""),
+                "supporting_causes": list(getattr(finding, "supporting_causes", [])),
+                "evidence": list(getattr(finding, "evidence", [])),
+                "recommendations": list(getattr(finding, "recommendations", [])),
+                "affected_resources": list(getattr(finding, "affected_resources", [])),
+                "detected_at": getattr(finding, "detected_at", ""),
+            })
+        return json.dumps(payload, indent=2)
+
     def print_full_result(self, result: dict, resources: dict):
         """Convenience method that prints everything in the correct order."""
         mode = result.get("mode", "baseline")
         self.print_header(mode)
         self.print_resource_table(resources)
+
+        k8s_findings = result.get("k8s_findings", [])
+        if k8s_findings:
+            self.print_k8s_dashboard(k8s_findings)
         
         # Include RAG context if in RAG mode with retrieved incidents
         if mode.lower() == "rag":

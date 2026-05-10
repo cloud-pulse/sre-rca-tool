@@ -107,6 +107,31 @@ USE_KUBERNETES     = _parse_bool(_get("SOURCE_KUBERNETES", "false"), False)
 K8S_NAMESPACE      = _get("SOURCE_NAMESPACE", "default")
 LOG_TAIL_LINES     = _parse_int(_get("SOURCE_LOG_TAIL_LINES", "100"), 100)
 
+# ─── KUBERNETES EXTENSION FLAGS ─────────────
+# Keep SOURCE_KUBERNETES as the single mode switch.
+KUBE_CONFIG_PATH   = _get("KUBECONFIG", "") or None
+KUBE_CONTEXT       = _get("KUBE_CONTEXT", "") or None
+KUBE_NAMESPACES    = [
+    ns.strip()
+    for ns in _get("KUBE_NAMESPACES", K8S_NAMESPACE).split(",")
+    if ns.strip()
+]
+
+K8S_COLLECT_PODS             = _parse_bool(_get("K8S_COLLECT_PODS", "true"), True)
+K8S_COLLECT_DEPLOYMENTS      = _parse_bool(_get("K8S_COLLECT_DEPLOYMENTS", "true"), True)
+K8S_COLLECT_EVENTS           = _parse_bool(_get("K8S_COLLECT_EVENTS", "true"), True)
+K8S_COLLECT_LOGS             = _parse_bool(_get("K8S_COLLECT_LOGS", "true"), True)
+K8S_COLLECT_NODES            = _parse_bool(_get("K8S_COLLECT_NODES", "true"), True)
+K8S_COLLECT_PVC              = _parse_bool(_get("K8S_COLLECT_PVC", "true"), True)
+K8S_COLLECT_QUOTAS           = _parse_bool(_get("K8S_COLLECT_QUOTAS", "true"), True)
+K8S_COLLECT_NETWORK_POLICIES = _parse_bool(_get("K8S_COLLECT_NETWORK_POLICIES", "true"), True)
+K8S_COLLECT_CONFIGMAPS       = _parse_bool(_get("K8S_COLLECT_CONFIGMAPS", "true"), True)
+K8S_COLLECT_SECRETS_META     = _parse_bool(_get("K8S_COLLECT_SECRETS_META", "true"), True)
+
+K8S_RESTART_COUNT_THRESHOLD  = _parse_int(_get("K8S_RESTART_COUNT_THRESHOLD", "5"), 5)
+K8S_FAILED_EVENT_THRESHOLD   = _parse_int(_get("K8S_FAILED_EVENT_THRESHOLD", "3"), 3)
+K8S_ENABLE_SIMULATION        = _parse_bool(_get("K8S_ENABLE_SIMULATION", "false"), False)
+
 # ─── RAG FLAGS ────────────────────────────────
 RAG_ENABLED        = _parse_bool(_get("RAG_ENABLED", "true"), True)
 RAG_TOP_K          = _parse_int(_get("RAG_TOP_K", "3"), 3)
@@ -177,6 +202,22 @@ def get_all_flags() -> dict:
         "USE_KUBERNETES":       USE_KUBERNETES,
         "K8S_NAMESPACE":        K8S_NAMESPACE,
         "LOG_TAIL_LINES":       LOG_TAIL_LINES,
+        "KUBE_CONFIG_PATH":     KUBE_CONFIG_PATH,
+        "KUBE_CONTEXT":         KUBE_CONTEXT,
+        "KUBE_NAMESPACES":      KUBE_NAMESPACES,
+        "K8S_COLLECT_PODS":     K8S_COLLECT_PODS,
+        "K8S_COLLECT_DEPLOYMENTS": K8S_COLLECT_DEPLOYMENTS,
+        "K8S_COLLECT_EVENTS":   K8S_COLLECT_EVENTS,
+        "K8S_COLLECT_LOGS":     K8S_COLLECT_LOGS,
+        "K8S_COLLECT_NODES":    K8S_COLLECT_NODES,
+        "K8S_COLLECT_PVC":      K8S_COLLECT_PVC,
+        "K8S_COLLECT_QUOTAS":   K8S_COLLECT_QUOTAS,
+        "K8S_COLLECT_NETWORK_POLICIES": K8S_COLLECT_NETWORK_POLICIES,
+        "K8S_COLLECT_CONFIGMAPS": K8S_COLLECT_CONFIGMAPS,
+        "K8S_COLLECT_SECRETS_META": K8S_COLLECT_SECRETS_META,
+        "K8S_RESTART_COUNT_THRESHOLD": K8S_RESTART_COUNT_THRESHOLD,
+        "K8S_FAILED_EVENT_THRESHOLD": K8S_FAILED_EVENT_THRESHOLD,
+        "K8S_ENABLE_SIMULATION": K8S_ENABLE_SIMULATION,
         "RAG_ENABLED":          RAG_ENABLED,
         "RAG_TOP_K":            RAG_TOP_K,
 "RAG_THRESHOLD":        RAG_THRESHOLD,
@@ -306,3 +347,23 @@ if __name__ == "__main__":
     print(f"Keys: {list(all_flags.keys())}")
 
     print("\nTask A OK")
+
+
+# ── Kubernetes Mode ───────────────────────────────────────────────
+ENABLE_KUBERNETES_MODE       = os.getenv("ENABLE_KUBERNETES_MODE",       "false").lower() == "true"
+KUBE_CONFIG_PATH             = os.getenv("KUBECONFIG",                   None)
+KUBE_CONTEXT                 = os.getenv("KUBE_CONTEXT",                 None)
+KUBE_NAMESPACES              = os.getenv("KUBE_NAMESPACES",              "default").split(",")
+K8S_COLLECT_PODS             = os.getenv("K8S_COLLECT_PODS",             "true").lower() == "true"
+K8S_COLLECT_DEPLOYMENTS      = os.getenv("K8S_COLLECT_DEPLOYMENTS",      "true").lower() == "true"
+K8S_COLLECT_EVENTS           = os.getenv("K8S_COLLECT_EVENTS",           "true").lower() == "true"
+K8S_COLLECT_LOGS             = os.getenv("K8S_COLLECT_LOGS",             "true").lower() == "true"
+K8S_COLLECT_NODES            = os.getenv("K8S_COLLECT_NODES",            "true").lower() == "true"
+K8S_COLLECT_PVC              = os.getenv("K8S_COLLECT_PVC",              "true").lower() == "true"
+K8S_COLLECT_QUOTAS           = os.getenv("K8S_COLLECT_QUOTAS",           "true").lower() == "true"
+K8S_COLLECT_NETWORK_POLICIES = os.getenv("K8S_COLLECT_NETWORK_POLICIES", "true").lower() == "true"
+K8S_COLLECT_CONFIGMAPS       = os.getenv("K8S_COLLECT_CONFIGMAPS",       "true").lower() == "true"
+K8S_COLLECT_SECRETS_META     = os.getenv("K8S_COLLECT_SECRETS_META",     "true").lower() == "true"
+K8S_RESTART_COUNT_THRESHOLD  = int(os.getenv("K8S_RESTART_COUNT_THRESHOLD", "5"))
+K8S_FAILED_EVENT_THRESHOLD   = int(os.getenv("K8S_FAILED_EVENT_THRESHOLD",  "3"))
+K8S_ENABLE_SIMULATION        = os.getenv("K8S_ENABLE_SIMULATION",        "false").lower() == "true"

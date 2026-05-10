@@ -635,6 +635,9 @@ class HelpHandler(BaseHandler):
         table.add_column("Examples", style="dim", width=30)
 
         rows = [
+            ("[bold cyan]/k8s[/bold cyan] [italic]<subcommand>[/italic]",
+             "[white]Kubernetes status/pods/events/logs/rca[/white]",
+             "/k8s status"),
             ("[bold cyan]analyse[/bold cyan] [italic]<service>[/italic]",
              "[white]RAG-based RCA with sliding window[/white]",
              "analyse payment-service"),
@@ -678,6 +681,76 @@ class HelpHandler(BaseHandler):
         return "ok"
 
 
+class K8sHandler(BaseHandler):
+    description = "Kubernetes-specific operations and RCA"
+    aliases = ["k8s", "/k8s"]
+    requires_service = False
+
+    def handle(self, args: list[str]) -> str:
+        from flags import USE_KUBERNETES, K8S_NAMESPACE, KUBE_NAMESPACES
+
+        if not USE_KUBERNETES:
+            console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+            return "disabled"
+
+        if not args:
+            console.print("Usage: /k8s <status|pods|deployments|events|logs|rca|simulate|rollback> ...")
+            return "usage"
+
+        from k8s.command_handler import K8sCommandHandler
+        handler = K8sCommandHandler()
+        sub = args[0].lower()
+
+        if sub == "status":
+            handler.status()
+            return "ok"
+        if sub == "pods":
+            ns = args[1] if len(args) > 1 else K8S_NAMESPACE
+            handler.pods(ns)
+            return "ok"
+        if sub == "deployments":
+            ns = args[1] if len(args) > 1 else K8S_NAMESPACE
+            handler.deployments(ns)
+            return "ok"
+        if sub == "events":
+            ns = args[1] if len(args) > 1 else K8S_NAMESPACE
+            handler.events(ns)
+            return "ok"
+        if sub == "logs":
+            if len(args) < 2:
+                console.print("Usage: /k8s logs <pod> [namespace]")
+                return "usage"
+            ns = args[2] if len(args) > 2 else K8S_NAMESPACE
+            handler.logs(args[1], ns)
+            return "ok"
+        if sub == "rca":
+            target = args[1] if len(args) > 1 else "all"
+            findings = handler.rca(target, KUBE_NAMESPACES)
+            from output.rca_formatter import RCAFormatter
+            formatter = RCAFormatter()
+            if target == "all":
+                formatter.print_k8s_dashboard(findings)
+            elif findings:
+                formatter.print_k8s_rca(findings[0])
+            return "ok"
+        if sub == "simulate":
+            if len(args) < 3:
+                console.print("Usage: /k8s simulate <scenario> <service> [namespace]")
+                return "usage"
+            ns = args[3] if len(args) > 3 else K8S_NAMESPACE
+            handler.simulate(args[1], ns, args[2])
+            return "ok"
+        if sub == "rollback":
+            if len(args) < 2:
+                console.print("Usage: /k8s rollback <scenario>")
+                return "usage"
+            handler.rollback(args[1])
+            return "ok"
+
+        console.print(f"Unknown /k8s subcommand: {sub}")
+        return "usage"
+
+
 _ANALYSE = AnalyseHandler()
 _STATUS = StatusHandler()
 _COMPARE = CompareHandler()
@@ -687,6 +760,7 @@ _EXPLAIN = ExplainHandler()
 _CLEAN = CleanHandler()
 _CLEAN_LOGS = CleanLogsHandler()
 _HELP = HelpHandler()
+_K8S = K8sHandler()
 
 REGISTRY: dict[str, BaseHandler] = {
     "analyse": _ANALYSE,
@@ -699,6 +773,8 @@ REGISTRY: dict[str, BaseHandler] = {
     "clean": _CLEAN,
     "clean-logs": _CLEAN_LOGS,
     "help": _HELP,
+    "k8s": _K8S,
+    "/k8s": _K8S,
 }
 
 
@@ -709,6 +785,7 @@ def resolve(user_input: str) -> Optional[tuple[BaseHandler, list[str]]]:
 
     words = text.split()
     first = words[0].lower()
+    normalized_first = first.lstrip("/")
 
     question_starters = {
         "what", "how", "why", "when", "where", "which",
@@ -716,7 +793,7 @@ def resolve(user_input: str) -> Optional[tuple[BaseHandler, list[str]]]:
         "do", "does", "did"
     }
 
-    if first in question_starters:
+    if normalized_first in question_starters:
         return None
 
     if is_out_of_scope(text):
@@ -725,16 +802,18 @@ def resolve(user_input: str) -> Optional[tuple[BaseHandler, list[str]]]:
     # Tier 1: exact match
     if first in REGISTRY:
         return REGISTRY[first], words[1:]
+    if normalized_first in REGISTRY:
+        return REGISTRY[normalized_first], words[1:]
 
     # Tier 2: fuzzy command match
-    fuzzy = _fuzzy_match_command(first)
+    fuzzy = _fuzzy_match_command(normalized_first)
     if fuzzy:
         confirmed = _prompt_did_you_mean(first, fuzzy)
         if confirmed:
             return REGISTRY[fuzzy], words[1:]
         return None
 
-    if first == "investigate":
+    if normalized_first == "investigate":
         return None
 
     # Tier 3: keyword confidence scoring

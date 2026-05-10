@@ -29,6 +29,7 @@ from output.rca_formatter import RCAFormatter
 from evaluation.comparator import Comparator
 from flags import HISTORICAL_LOGS_DIR, DEFAULT_LOG_PATH
 from flags import LLM_WARMUP, LLM_CACHE_TTL
+from flags import USE_KUBERNETES, K8S_NAMESPACE, KUBE_NAMESPACES
 
 console = Console()
 
@@ -55,11 +56,7 @@ def run_pipeline(
 ) -> dict:
     """Run the full RCA analysis pipeline."""
 
-    from flags import (
-        USE_KUBERNETES,
-        K8S_NAMESPACE,
-        LOG_TAIL_LINES,
-    )
+    from flags import LOG_TAIL_LINES
 
     formatter = RCAFormatter()
     loader = LogLoader()
@@ -161,6 +158,8 @@ def run_pipeline(
     result["retrieved_incidents"] = retrieved
     result["rag_context_used"] = rag_context
     result["resources"] = resources
+    result["k8s_snapshot"] = context.get("k8s_snapshot")
+    result["k8s_findings"] = context.get("k8s_findings", [])
 
     # Save result for chat command (Task 22)
     _save_last_result(result)
@@ -359,6 +358,16 @@ def print_result(result: dict):
     if result.get("mode") == "rag":
         console.print("HISTORICAL MATCH:")
         console.print(f"  {result.get('historical_match', 'no')}")
+        console.print()
+
+    k8s_findings = result.get("k8s_findings", [])
+    if k8s_findings:
+        console.print("KUBERNETES FINDINGS:")
+        for finding in k8s_findings:
+            console.print(
+                f"  - {finding.service} [{finding.namespace}] "
+                f"{finding.status} ({finding.severity}) :: {finding.root_cause}"
+            )
         console.print()
 
     console.print("=" * 60 + "\n")
@@ -575,6 +584,111 @@ def status():
         console.print("  LLM Cache : [dim]empty[/dim]")
 
     console.print()
+
+
+@cli.group()
+def k8s():
+    """Kubernetes-aware RCA commands."""
+    pass
+
+
+def _get_k8s_handler():
+    from k8s.command_handler import K8sCommandHandler
+
+    return K8sCommandHandler()
+
+
+@k8s.command("status")
+def k8s_status():
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    _get_k8s_handler().status()
+
+
+@k8s.command("pods")
+@click.option("--namespace", "namespace", default=K8S_NAMESPACE)
+def k8s_pods(namespace):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    _get_k8s_handler().pods(namespace)
+
+
+@k8s.command("deployments")
+@click.option("--namespace", "namespace", default=K8S_NAMESPACE)
+def k8s_deployments(namespace):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    _get_k8s_handler().deployments(namespace)
+
+
+@k8s.command("events")
+@click.option("--namespace", "namespace", default=K8S_NAMESPACE)
+def k8s_events(namespace):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    _get_k8s_handler().events(namespace)
+
+
+@k8s.command("logs")
+@click.argument("pod")
+@click.option("--namespace", "namespace", default=K8S_NAMESPACE)
+@click.option("--tail", "tail", default=50)
+def k8s_logs(pod, namespace, tail):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    _get_k8s_handler().logs(pod, namespace, tail=tail)
+
+
+@k8s.command("rca")
+@click.argument("service")
+@click.option("--json", "as_json", is_flag=True, default=False)
+def k8s_rca(service, as_json):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    findings = _get_k8s_handler().rca(service, KUBE_NAMESPACES)
+    formatter = RCAFormatter()
+    if as_json:
+        click.echo(formatter.export_k8s_rca_json(findings))
+        return
+    if service == "all":
+        formatter.print_k8s_dashboard(findings)
+        return
+    if findings:
+        formatter.print_k8s_rca(findings[0])
+
+
+@k8s.command("simulate")
+@click.argument("scenario")
+@click.argument("service")
+@click.option("--namespace", "namespace", default=K8S_NAMESPACE)
+def k8s_simulate(scenario, service, namespace):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    ok = _get_k8s_handler().simulate(scenario, namespace, service)
+    if ok:
+        console.print("Simulation completed.")
+    else:
+        console.print("Simulation was not applied.")
+
+
+@k8s.command("rollback")
+@click.argument("scenario")
+def k8s_rollback(scenario):
+    if not USE_KUBERNETES:
+        console.print("K8s mode is disabled. Set SOURCE_KUBERNETES=true to enable.")
+        return
+    ok = _get_k8s_handler().rollback(scenario)
+    if ok:
+        console.print("Rollback completed.")
+    else:
+        console.print("Rollback failed or no saved state found.")
 
 
 @cli.command()

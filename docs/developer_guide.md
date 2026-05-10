@@ -111,6 +111,16 @@ sre-rca-tool/
 │   ├── rag_engine.py           # ChromaDB + sentence-transformers RAG
 │   ├── service_graph.py        # Blast radius from services.yaml + log discovery
 │   └── sre_investigator.py     # 🎯 Main SRE orchestrator (investigate())
+├── k8s/                        # ☸️ Kubernetes-native extension layer
+│   ├── client.py               # SDK client manager + kubeconfig handling
+│   ├── models.py               # Dataclasses for snapshot + findings
+│   ├── collector.py            # Unified Kubernetes resource collector
+│   ├── event_analyzer.py       # Failure pattern detection + severity
+│   ├── rca_engine.py           # Kubernetes RCA generation
+│   ├── service_mapper.py       # services.yaml-first mapping
+│   ├── graph_updater.py        # Approval-gated topology updates
+│   ├── simulator.py            # Failure simulation with confirmation
+│   └── command_handler.py      # /k8s and main.py k8s command actions
 ├── output/                     # 📊
 │   └── rca_formatter.py        # Rich tables, panels, copy-paste fixes
 ├── evaluation/                 # 📈
@@ -131,6 +141,22 @@ sre-rca-tool/
     ├── setup_minikube.sh       # Minikube + demo app
     ├── verify_final.sh         # 114 structural + LLM tests
     └── quick_demo.sh           # 30s dissertation demo
+```
+
+## Kubernetes extension commands
+
+```bash
+python main.py k8s status
+python main.py k8s pods --namespace default
+python main.py k8s rca payment-service
+python main.py k8s rca all
+```
+
+In shell:
+
+```text
+/k8s status
+/k8s rca all
 ```
 
 ## 3. FEATURE FLAGS (.env)
