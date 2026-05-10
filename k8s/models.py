@@ -20,6 +20,10 @@ class K8sPod:
     restart_count: int
     ready: bool
     phase: str
+    cpu_usage: str = "N/A"                                         # e.g., "100m", "N/A"
+    memory_usage: str = "N/A"                                      # e.g., "512Mi", "N/A"
+    cpu_limit: str = "N/A"                                         # e.g., "500m"
+    memory_limit: str = "N/A"                                      # e.g., "512Mi"
     container_states: List[K8sContainerState] = field(default_factory=list)
     events: List["K8sEvent"] = field(default_factory=list)
     logs: List[str] = field(default_factory=list)
@@ -65,6 +69,8 @@ class K8sNode:
     ready: bool
     cpu_capacity: str
     memory_capacity: str
+    cpu_usage: str = "N/A"                                         # e.g., "1200m", "N/A"
+    memory_usage: str = "N/A"                                      # e.g., "2048Mi", "N/A"
     conditions: List[K8sCondition] = field(default_factory=list)
     taints: List[str] = field(default_factory=list)
 
@@ -94,6 +100,30 @@ class K8sNetworkPolicy:
     pod_selector: Dict
     ingress_rules: List[Dict] = field(default_factory=list)
     egress_rules: List[Dict] = field(default_factory=list)
+
+
+@dataclass
+class K8sServiceObject:
+    """Represents a Kubernetes Service (ClusterIP/NodePort/LoadBalancer)"""
+    name: str
+    namespace: str
+    type: str          # ClusterIP | NodePort | LoadBalancer
+    cluster_ip: str
+    ports: List[Dict] = field(default_factory=list)
+    selector: Dict = field(default_factory=dict)
+
+
+@dataclass
+class K8sWorkload:
+    """Represents a Deployment or StatefulSet with linked Service and Pods"""
+    name: str
+    namespace: str
+    kind: str                                          # "Deployment" | "StatefulSet"
+    replicas_desired: int
+    replicas_ready: int
+    service_object: "K8sServiceObject | None" = None
+    pods: List[K8sPod] = field(default_factory=list)
+    conditions: List[K8sCondition] = field(default_factory=list)
 
 
 @dataclass
@@ -137,4 +167,6 @@ class K8sRCAFinding:
     evidence: List[str] = field(default_factory=list)
     recommendations: List[str] = field(default_factory=list)
     affected_resources: List[str] = field(default_factory=list)
+    kubectl_commands: List[str] = field(default_factory=list)     # Suggested kubectl commands
+    llm_narrative: str = ""                                        # LLM-generated RCA narrative
     detected_at: str = ""

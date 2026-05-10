@@ -391,6 +391,13 @@ def cli():
     default=None
 )
 @click.option(
+    "--log-file",
+    "cli_log_file",
+    type=click.Path(exists=True),
+    required=False,
+    help="Path to a log file to analyse. Disables K8s mode for this run."
+)
+@click.option(
     "--mode", "-m",
     type=click.Choice(["baseline", "rag"]),
     default="rag",
@@ -433,9 +440,15 @@ def cli():
     is_flag=True,
     default=False
 )
-def analyze(log_file, mode, severity,
+@click.option(
+    "--save",
+    is_flag=True,
+    default=False,
+    help="Save service graph changes to services.yaml after analysis"
+)
+def analyze(log_file, cli_log_file, mode, severity,
             service, namespace, mock,
-            output, verbose):
+            output, verbose, save):
     """
     Analyze logs and generate RCA.
 
@@ -449,9 +462,17 @@ def analyze(log_file, mode, severity,
       python main.py analyze\n
       --namespace sre-demo\n
       python main.py analyze logs/test.log
-      --mock
+      --mock\n
+      python main.py analyze --log-file logs/test.log\n
+      python main.py analyze --save
     """
     from flags import USE_KUBERNETES
+
+    # Handle --log-file flag: disable K8s mode for this run
+    if cli_log_file:
+        os.environ["ENABLE_KUBERNETES_MODE"] = "false"
+        console.print(f"[dim]File mode: analysing {cli_log_file}. K8s mode disabled for this run.[/dim]")
+        log_file = cli_log_file
 
     if not log_file and not USE_KUBERNETES:
         console.print(
@@ -500,6 +521,20 @@ def analyze(log_file, mode, severity,
         formatter.print_full_result(
             result, resources
         )
+    
+    # Handle --save flag for service graph updates
+    if save:
+        try:
+            from core.service_graph import ServiceGraph
+            k8s_snapshot = result.get("_k8s_snapshot") or result.get("k8s_snapshot")
+            if k8s_snapshot:
+                graph = ServiceGraph()
+                graph.enrich_from_k8s(k8s_snapshot)
+                graph.prompt_and_apply(save_to_disk=True)
+            else:
+                console.print("[yellow]K8s snapshot not available for graph update.[/yellow]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not update service graph: {e}[/yellow]")
 
 
 @cli.command()

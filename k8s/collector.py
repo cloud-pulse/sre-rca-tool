@@ -34,9 +34,18 @@ log = get_logger("k8s_collector")
 
 
 class K8sCollector:
-    def __init__(self, client_manager, timeout_seconds: int = 30):
+    def __init__(self, client_manager, timeout_seconds: int = 30, guard=None):
         self.client = client_manager
         self.timeout_seconds = timeout_seconds
+        self.guard = guard
+        # If no guard provided, create a default one
+        if self.guard is None:
+            try:
+                from .namespace_guard import NamespaceGuard
+                self.guard = NamespaceGuard()
+            except Exception as e:
+                log.debug(f"NamespaceGuard initialization skipped: {e}")
+                self.guard = None
 
     def _api_exc(self):
         try:
@@ -348,6 +357,14 @@ class K8sCollector:
 
     def collect_all(self, namespaces: list[str]) -> K8sClusterSnapshot:
         namespaces = [ns.strip() for ns in namespaces if ns and ns.strip()] or ["default"]
+        
+        # Filter namespaces using guard if available
+        if self.guard:
+            safe_namespaces = self.guard.get_safe_namespaces(namespaces)
+            if safe_namespaces != namespaces:
+                log.info(f"Filtered namespaces: {namespaces} → {safe_namespaces} (protected excluded)")
+                namespaces = safe_namespaces
+        
         pods = []
         deployments = []
         events = []

@@ -11,6 +11,26 @@
 #      dependencies from logs and ask you
 #      before adding them here.
 #
+# Optional Kubernetes Section:
+#   Each service can have a "kubernetes:" section
+#   to map it to a K8s Deployment/StatefulSet.
+#   If present, the service resolver uses it as
+#   the authoritative mapping. If absent, the tool
+#   auto-discovers from the cluster.
+#
+#   Example with kubernetes section:
+#     paymentservice:
+#       port: 8080
+#       depends_on: [cartservice]
+#       kubernetes:
+#         namespace: "default"
+#         deployment: "paymentservice"
+#         kind: "Deployment"           # Deployment | StatefulSet
+#         selector:
+#           app: "paymentservice"
+#         container_name: "server"
+#         expected_replicas: 1
+#
 # dependency_confidence levels:
 #   user_defined      — you added this manually
 #   discovered_high   — found in connection logs

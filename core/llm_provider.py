@@ -28,12 +28,23 @@ class LLMProvider:
         self._embedding_model_local = None
 
         if self.provider == "nvidia":
-            from openai import OpenAI
+            try:
+                from openai import OpenAI
 
-            self._client = OpenAI(
-                base_url=LLM_BASE_URL,
-                api_key=NVIDIA_API_KEY,
-            )
+                self._client = OpenAI(
+                    base_url=LLM_BASE_URL,
+                    api_key=NVIDIA_API_KEY,
+                )
+            except Exception as exc:
+                # If the openai package or NVIDIA provider is not available,
+                # fall back to the local Ollama provider to avoid crashing
+                # interactive workflows (e.g., ai_sre REPL).
+                print(
+                    "[WARN] NVIDIA/OpenAI provider requested but unavailable; "
+                    "falling back to Ollama provider."
+                )
+                self.provider = "ollama"
+                self._client = None
 
     def _is_429(self, exc: Exception) -> bool:
         status_code = getattr(exc, "status_code", None)

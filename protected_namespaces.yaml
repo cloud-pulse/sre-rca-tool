@@ -1,0 +1,18 @@
+# protected_namespaces.yaml
+# Namespaces listed here are NEVER automatically operated on.
+# The tool will READ them only if the user explicitly names them (e.g. "analyse kube-system").
+# Add or remove entries as needed.
+
+protected:
+  - kube-system
+  - kube-public
+  - kube-node-lease
+  - istio-system
+  - cert-manager
+  - rbac-manager
+  - monitoring          # add/remove as needed
+
+# If a user explicitly names a protected namespace, the tool will:
+# 1. Warn them it is a protected namespace
+# 2. Offer READ-ONLY analysis only — no graph updates, no simulation, no write-back
+# 3. Require the user to confirm before proceeding

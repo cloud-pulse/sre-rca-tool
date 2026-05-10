@@ -13,7 +13,22 @@ class K8sCommandHandler:
     def __init__(self):
         self.client = K8sClientManager()
         self.collector = K8sCollector(self.client)
-        self.engine = K8sRCAEngine()
+
+        # Wire engine dependencies (required by K8sRCAEngine.__init__)
+        from k8s.event_analyzer import K8sEventAnalyzer
+        from k8s.service_resolver import K8sServiceResolver
+        from core.llm_analyzer import LLMAnalyzer
+
+        snapshot = self.collector.collect_all(["default"])
+        analyzer = K8sEventAnalyzer()
+        resolver = K8sServiceResolver(snapshot)
+        llm_analyzer = LLMAnalyzer()
+
+        self.engine = K8sRCAEngine(
+            analyzer=analyzer,
+            resolver=resolver,
+            llm_analyzer=llm_analyzer,
+        )
         self.simulator = None
         if K8S_ENABLE_SIMULATION:
             from .simulator import K8sSimulator

@@ -276,6 +276,180 @@ class ServiceGraph:
                 
         self._save()
 
+    def enrich_from_k8s(self, snapshot) -> list[dict]:
+        """
+        Compare K8s snapshot against existing service graph.
+        
+        Build proposed_changes list:
+        - New workloads not in graph
+        - Updated replica counts
+        - New dependencies from pod env vars
+        
+        Returns list of proposed changes (does NOT apply them).
+        """
+        if not hasattr(self, '_pending_changes'):
+            self._pending_changes = []
+        else:
+            self._pending_changes = []
+        
+        proposed = []
+        
+        # Check for new workloads
+        for workload in snapshot.pods:
+            # Workload name match in services
+            found = False
+            for svc_name, svc_config in self.services.items():
+                k8s_cfg = svc_config.get("kubernetes", {})
+                if (
+                    k8s_cfg.get("namespace") == workload.namespace
+                    and k8s_cfg.get("deployment") == workload.name
+                ):
+                    found = True
+                    # Check for replica count changes
+                    expected = k8s_cfg.get("expected_replicas", 0)
+                    if hasattr(workload, 'replicas_ready') and workload.replicas_ready != expected:
+                        proposed.append({
+                            "type": "update_replicas",
+                            "name": svc_name,
+                            "namespace": workload.namespace,
+                            "old_replicas": expected,
+                            "new_replicas": workload.replicas_ready if hasattr(workload, 'replicas_ready') else 0,
+                            "detail": f"Replica count changed from {expected} to {workload.replicas_ready if hasattr(workload, 'replicas_ready') else 0}"
+                        })
+                    break
+            
+            if not found:
+                # New workload
+                proposed.append({
+                    "type": "add_workload",
+                    "name": workload.name,
+                    "namespace": workload.namespace,
+                    "kind": getattr(workload, 'kind', 'Pod'),
+                    "detail": f"New {getattr(workload, 'kind', 'Pod')} discovered in {workload.namespace}"
+                })
+        
+        # Check for dependencies from pod env vars
+        # Look for SERVICE_HOST patterns in pod env
+        for workload in snapshot.pods:
+            for pod in workload.pods if hasattr(workload, 'pods') else []:
+                # Check pod env vars (not directly available in our model, skip for now)
+                pass
+        
+        self._pending_changes = proposed
+        return proposed
+
+    def apply_pending(self, save_to_disk: bool = False) -> bool:
+        """
+        Apply pending changes to in-memory graph.
+        
+        If save_to_disk=True: write to services.yaml.
+        Clear pending_changes after applying.
+        """
+        if not hasattr(self, '_pending_changes'):
+            return True
+        
+        changes_applied = 0
+        
+        for change in self._pending_changes:
+            if change["type"] == "add_workload":
+                # Add new service to graph
+                new_name = change["name"]
+                self.services[new_name] = {
+                    "description": f"Auto-discovered from K8s: {change['detail']}",
+                    "namespace": change["namespace"],
+                    "port": 8080,  # Default, can be updated
+                    "depends_on": [],
+                    "exposes_to": [],
+                    "containers": [{"name": new_name}],
+                    "kubernetes": {
+                        "namespace": change["namespace"],
+                        "deployment": new_name,
+                        "kind": change.get("kind", "Deployment"),
+                        "selector": {"app": new_name},
+                        "expected_replicas": 1
+                    },
+                    "dependency_confidence": "discovered_auto"
+                }
+                changes_applied += 1
+                log.info(f"Added workload: {new_name}")
+            
+            elif change["type"] == "update_replicas":
+                # Update replica count
+                svc_name = change["name"]
+                if svc_name in self.services:
+                    k8s_cfg = self.services[svc_name].get("kubernetes", {})
+                    k8s_cfg["expected_replicas"] = change["new_replicas"]
+                    self.services[svc_name]["kubernetes"] = k8s_cfg
+                    changes_applied += 1
+                    log.info(f"Updated {svc_name} replicas to {change['new_replicas']}")
+        
+        if save_to_disk and changes_applied > 0:
+            self._save()
+            log.info(f"Saved {changes_applied} changes to {self.services_file}")
+        
+        self._pending_changes = []
+        return True
+
+    def prompt_and_apply(self, save_to_disk: bool = False) -> bool:
+        """
+        Show pending changes and prompt user for approval.
+        
+        If approved: apply_pending(save_to_disk=save_to_disk)
+        If rejected: write to logs/k8s_graph_proposals.log
+        
+        Returns True if applied, False if rejected.
+        """
+        if not hasattr(self, '_pending_changes') or not self._pending_changes:
+            console.print("[dim]Service graph is up to date.[/dim]")
+            return True
+        
+        # Show pending changes table
+        table = Table(title=f"Proposed Graph Changes ({len(self._pending_changes)})", box=box.ROUNDED)
+        table.add_column("Type", style="cyan")
+        table.add_column("Workload", style="bold")
+        table.add_column("Detail", style="dim")
+        
+        for change in self._pending_changes:
+            table.add_row(
+                change["type"],
+                change.get("name", "N/A"),
+                change.get("detail", "")
+            )
+        
+        console.print(table)
+        
+        # Prompt for approval
+        try:
+            ans = console.input(
+                f"[yellow]Apply {len(self._pending_changes)} changes to service graph? [y/N]: [/yellow]"
+            ).strip().lower()
+            
+            if ans in ("y", "yes"):
+                self.apply_pending(save_to_disk=save_to_disk)
+                console.print("[green]Changes applied.[/green]")
+                return True
+            else:
+                # Write to proposals log
+                from datetime import datetime
+                log_path = Path("logs/k8s_graph_proposals.log")
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"\n\n=== {datetime.now().isoformat()} ===\n")
+                    for change in self._pending_changes:
+                        f.write(f"{change['type']}: {change.get('name', 'N/A')} - {change.get('detail', '')}\n")
+                
+                console.print(f"[dim]Proposals saved to {log_path}[/dim]")
+                return False
+        
+        except KeyboardInterrupt:
+            console.print()
+            return False
+
+    def get_service_metadata(self, service_name: str) -> dict | None:
+        """Get full metadata dict for a service from the in-memory graph."""
+        return self.services.get(service_name)
+
     def print_graph(self):
         table = Table(title="Service Dependencies")
         table.add_column("Service")

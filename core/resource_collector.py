@@ -24,18 +24,21 @@ class ResourceCollector:
     def __init__(self):
         self._k8s_client = None
         self._k8s_collector = None
+        self._k8s_snapshot = None
         try:
             from flags import ENABLE_KUBERNETES_MODE, KUBE_NAMESPACES, KUBE_CONFIG_PATH, KUBE_CONTEXT
             if ENABLE_KUBERNETES_MODE:
                 from k8s.client import K8sClientManager
                 from k8s.collector import K8sCollector
+                from k8s.namespace_guard import NamespaceGuard
                 _mgr = K8sClientManager(
                     namespaces=KUBE_NAMESPACES,
                     kubeconfig_path=KUBE_CONFIG_PATH,
                     context=KUBE_CONTEXT
                 )
                 if _mgr.is_available():
-                    self._k8s_collector = K8sCollector(_mgr)
+                    _guard = NamespaceGuard()
+                    self._k8s_collector = K8sCollector(_mgr, guard=_guard)
         except Exception as exc:
             log.debug(f"K8s collector initialization skipped: {exc}")
 
@@ -455,6 +458,7 @@ class ResourceCollector:
         if self._k8s_collector is not None:
             namespaces = KUBE_NAMESPACES or [namespace]
             snapshot = self._k8s_collector.collect_all(namespaces)
+            self._k8s_snapshot = snapshot
             result = {}
             for service in services:
                 matched = None
@@ -496,6 +500,7 @@ class ResourceCollector:
                         "namespace": namespace,
                     }
 
+            # Append K8s snapshot to resources
             result["_k8s_snapshot"] = snapshot
             return result
 

@@ -95,6 +95,13 @@ class ContextBuilder:
                 )
             formatted_resources += "=== END OF KUBERNETES RCA FINDINGS ==="
         
+        # Ensure required Kubernetes context keys always exist
+        # (Phase 5 / Task 1)
+        if k8s_findings is None:
+            k8s_findings = []
+        if k8s_snapshot is None:
+            k8s_snapshot = None
+
         return {
             "error_count": error_count,
             "warning_count": warning_count,
@@ -109,6 +116,7 @@ class ContextBuilder:
             "k8s_snapshot": k8s_snapshot,
             "k8s_findings": k8s_findings,
         }
+
 
     def format_logs_for_prompt(self, entries: list[dict]) -> str:
         """

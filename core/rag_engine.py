@@ -382,6 +382,51 @@ class RAGEngine:
             return False
         return best["similarity_score"] >= threshold
 
+    def store_k8s_rca_finding(self, finding) -> None:
+        """
+        Store completed K8s RCA finding in ChromaDB for future RAG retrieval.
+        
+        Live K8s snapshot data is NEVER stored — only the completed RCA finding summary.
+        
+        Args:
+            finding: K8sRCAFinding object with all fields populated
+        """
+        try:
+            # Build document for embedding
+            doc = (
+                f"Service: {finding.service} | Namespace: {finding.namespace} | "
+                f"Status: {finding.status} | Severity: {finding.severity} | "
+                f"Root cause: {finding.root_cause} | "
+                f"Evidence: {' '.join(finding.evidence)} | "
+                f"Recommendations: {' '.join(finding.recommendations)}"
+            )
+            
+            # Build metadata
+            metadata = {
+                "service": finding.service,
+                "namespace": finding.namespace,
+                "severity": finding.severity,
+                "root_cause": finding.root_cause,
+                "detected_at": finding.detected_at,
+                "type": "k8s_rca",
+            }
+            
+            # Generate unique ID based on service and timestamp
+            doc_id = f"k8s_{finding.service}_{finding.detected_at}".replace(" ", "_").replace(":", "-")
+            
+            # Embed and store in collection (same collection, differentiated by metadata type)
+            embeddings = provider.embed([doc])
+            self.collection.add(
+                ids=[doc_id],
+                embeddings=embeddings,
+                documents=[doc],
+                metadatas=[metadata]
+            )
+            
+            log.step(f"Stored K8s RCA finding: {finding.service} in {finding.namespace}")
+        except Exception as e:
+            log.error(f"Failed to store K8s RCA finding: {e}")
+
 
 if __name__ == "__main__":
     from flags import HISTORICAL_LOGS_DIR

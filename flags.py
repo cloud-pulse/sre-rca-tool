@@ -367,3 +367,38 @@ K8S_COLLECT_SECRETS_META     = os.getenv("K8S_COLLECT_SECRETS_META",     "true")
 K8S_RESTART_COUNT_THRESHOLD  = int(os.getenv("K8S_RESTART_COUNT_THRESHOLD", "5"))
 K8S_FAILED_EVENT_THRESHOLD   = int(os.getenv("K8S_FAILED_EVENT_THRESHOLD",  "3"))
 K8S_ENABLE_SIMULATION        = os.getenv("K8S_ENABLE_SIMULATION",        "false").lower() == "true"
+
+# ── Mode Control ──────────────────────────────────────────────────
+# K8s is default. Pass --log-file <path> at CLI to force file mode.
+ENABLE_KUBERNETES_MODE = os.getenv("ENABLE_KUBERNETES_MODE", "true").lower() == "true"
+
+# ── Kubernetes Connection ─────────────────────────────────────────
+KUBE_CONFIG_PATH  = os.getenv("KUBECONFIG", None)        # None = auto ~/.kube/config
+KUBE_CONTEXT      = os.getenv("KUBE_CONTEXT", None)       # None = current context
+KUBE_NAMESPACES   = os.getenv("KUBE_NAMESPACES", "default").split(",")
+
+# ── Collection Toggles ────────────────────────────────────────────
+K8S_COLLECT_PODS        = os.getenv("K8S_COLLECT_PODS",        "true").lower() == "true"
+K8S_COLLECT_DEPLOYMENTS = os.getenv("K8S_COLLECT_DEPLOYMENTS", "true").lower() == "true"
+K8S_COLLECT_EVENTS      = os.getenv("K8S_COLLECT_EVENTS",      "true").lower() == "true"
+K8S_COLLECT_LOGS        = os.getenv("K8S_COLLECT_LOGS",        "true").lower() == "true"
+K8S_COLLECT_METRICS     = os.getenv("K8S_COLLECT_METRICS",     "true").lower() == "true"
+K8S_COLLECT_NODES       = os.getenv("K8S_COLLECT_NODES",       "true").lower() == "true"
+K8S_COLLECT_PVC         = os.getenv("K8S_COLLECT_PVC",         "true").lower() == "true"
+K8S_COLLECT_QUOTAS      = os.getenv("K8S_COLLECT_QUOTAS",      "true").lower() == "true"
+K8S_COLLECT_NETPOL      = os.getenv("K8S_COLLECT_NETPOL",      "true").lower() == "true"
+K8S_COLLECT_CONFIGMAPS  = os.getenv("K8S_COLLECT_CONFIGMAPS",  "true").lower() == "true"
+K8S_COLLECT_SECRETS_META= os.getenv("K8S_COLLECT_SECRETS_META","true").lower() == "true"
+K8S_COLLECT_RBAC        = os.getenv("K8S_COLLECT_RBAC",        "true").lower() == "true"
+
+# ── RCA Thresholds ────────────────────────────────────────────────
+K8S_RESTART_THRESHOLD   = int(os.getenv("K8S_RESTART_THRESHOLD", "5"))
+K8S_EVENT_THRESHOLD     = int(os.getenv("K8S_EVENT_THRESHOLD",   "3"))
+K8S_LOG_TAIL_LINES      = int(os.getenv("K8S_LOG_TAIL_LINES",   "100"))
+
+# ── Simulation (demo only) ────────────────────────────────────────
+K8S_ENABLE_SIMULATION   = os.getenv("K8S_ENABLE_SIMULATION", "false").lower() == "true"
+
+# ── Paths ─────────────────────────────────────────────────────────
+PROTECTED_NS_CONFIG     = os.getenv("PROTECTED_NS_CONFIG", "protected_namespaces.yaml")
+SERVICE_GRAPH_FILE      = os.getenv("SERVICE_GRAPH_FILE",  "services.yaml")
