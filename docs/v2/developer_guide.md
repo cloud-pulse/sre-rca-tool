@@ -147,7 +147,7 @@ Reload: `python ai_sre.py clean logs/test.log`.
 your-service:
   depends_on: [db-service]
   exposes_to: [api-gateway]
-  namespace: sre-demo
+  namespace: default
   containers: [your-app, istio-proxy]
 ```
 

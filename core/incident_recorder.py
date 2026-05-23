@@ -37,7 +37,7 @@ class IncidentRecorder:
             similarity = 0.0
 
         if similarity >= self.SIMILARITY_THRESHOLD:
-            log.info("Known incident detected.")
+            # log.info("Known incident detected.")
             return {
                 "saved": False,
                 "incident_id": "",

@@ -178,7 +178,7 @@ graph TD
 
 ### `core/log_loader.py`
 - **Purpose**: **Load logs: file or `kubectl`**
-- **Functionality**: `load_auto(namespace='sre-demo', tail=100)`
+- **Functionality**: `load_auto(namespace='default', tail=100)`
 - **Interactions**: CLI entry → processor
 - **Key Patterns**: Auto-detect Kubernetes mode via flags
 

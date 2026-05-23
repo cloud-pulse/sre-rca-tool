@@ -831,7 +831,7 @@ g = ServiceGraph()
 services = g.get_all_service_names()
 result = {
     'target_service': services[0],
-    'namespace': 'sre-demo',
+    'namespace': 'default',
     'data_source': 'file',
 }
 f.print_investigation_header(result)

@@ -262,7 +262,7 @@ class LogLoader:
             log.info(f"Loading per-service log for {service_name}")
             return self.load(target)
             
-        log.info(f"Per-service log not found for {service_name}, filtering {fallback_log}")
+        # log.info(f"Per-service log not found for {service_name}, filtering {fallback_log}")
         fallback_lines = self.load(fallback_log)
         filtered = [l for l in fallback_lines if service_name in l]
         

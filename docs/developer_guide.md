@@ -192,7 +192,7 @@ python main.py analyze logs/test.log --service payment-service
 python main.py analyze logs/test.log --severity WARN  # WARN+ only
 
 # Kubernetes mode
-python main.py analyze --namespace sre-demo           # Auto service=default
+python main.py analyze --namespace default           # Auto service=default
 
 # Mock resources (even in k8s mode)
 python main.py analyze logs/test.log --mock
@@ -430,9 +430,9 @@ bash scripts/setup_minikube.sh
 
 # Edit .env
 echo "SOURCE_KUBERNETES=true" >> .env
-echo "SOURCE_NAMESPACE=sre-demo" >> .env
+echo "SOURCE_NAMESPACE=default" >> .env
 
-python main.py analyze --namespace sre-demo
+python main.py analyze --namespace default
 python ai_sre.py "check payment-service"
 ```
 

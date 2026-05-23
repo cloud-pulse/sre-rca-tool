@@ -438,7 +438,7 @@ def analyze(log_file, mode, severity,
       python main.py analyze logs/test.log
       --mode baseline\n
       python main.py analyze\n
-      --namespace sre-demo\n
+      --namespace default\n
       python main.py analyze logs/test.log
       --mock
     """

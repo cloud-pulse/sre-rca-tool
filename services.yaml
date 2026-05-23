@@ -15,62 +15,173 @@
 #   user_defined      — you added this manually
 #   discovered_high   — found in connection logs
 #   discovered_medium — found in error logs
-
+# This file is used by the RCA engine to:
+#   - understand service dependencies
+#   - correlate failures
+#   - analyze cascading impact
+#   - map observability data
 services:
 
-  api-gateway:
-    description: "Entry point — routes all
-                  external traffic"
-    namespace: sre-demo
+  frontend:
+    description: "User-facing frontend service"
+    namespace: default
+    port: 80
+    depends_on:
+      - productcatalogservice
+      - recommendationservice
+      - cartservice
+      - shippingservice
+      - checkoutservice
+      - currencyservice
+      - adservice
+    exposes_to: []
+    health_endpoint: /
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  checkoutservice:
+    description: "Handles checkout workflow orchestration"
+    namespace: default
+    port: 5050
+    depends_on:
+      - paymentservice
+      - shippingservice
+      - emailservice
+      - currencyservice
+      - cartservice
+      - productcatalogservice
+    exposes_to:
+      - frontend
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  recommendationservice:
+    description: "Provides product recommendations"
+    namespace: default
     port: 8080
     depends_on:
-      - payment-service
-      - auth-service
-    exposes_to: []
-    health_endpoint: /health
-    containers:
-      - name: api-gateway
-      - name: istio-proxy
-    dependency_confidence: user_defined
-
-  payment-service:
-    description: "Handles payment processing
-                  and transactions"
-    namespace: sre-demo
-    port: 8081
-    depends_on:
-      - database-service
+      - productcatalogservice
     exposes_to:
-      - api-gateway
+      - frontend
     health_endpoint: /health
     containers:
-      - name: payment-service
-      - name: istio-proxy
+      - name: server
     dependency_confidence: user_defined
 
-  database-service:
-    description: "Primary data store for
-                  all transactional data"
-    namespace: sre-demo
-    port: 5432
+  productcatalogservice:
+    description: "Provides product catalog information"
+    namespace: default
+    port: 3550
     depends_on: []
     exposes_to:
-      - payment-service
+      - frontend
+      - checkoutservice
+      - recommendationservice
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  cartservice:
+    description: "Handles shopping cart operations"
+    namespace: default
+    port: 7070
+    depends_on:
+      - redis-cart
+    exposes_to:
+      - frontend
+      - checkoutservice
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  redis-cart:
+    description: "Redis backend for cart persistence"
+    namespace: default
+    port: 6379
+    depends_on: []
+    exposes_to:
+      - cartservice
     health_endpoint: /ping
     containers:
-      - name: database-service
+      - name: redis
     dependency_confidence: user_defined
 
-  auth-service:
-    description: "Authentication and token
-                  validation service"
-    namespace: sre-demo
-    port: 8082
+  paymentservice:
+    description: "Processes payment transactions"
+    namespace: default
+    port: 50051
     depends_on: []
     exposes_to:
-      - api-gateway
+      - checkoutservice
     health_endpoint: /health
     containers:
-      - name: auth-service
-      - name: istio-proxy
+      - name: server
+    dependency_confidence: user_defined
+
+  shippingservice:
+    description: "Calculates shipping costs and delivery"
+    namespace: default
+    port: 50051
+    depends_on: []
+    exposes_to:
+      - frontend
+      - checkoutservice
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  currencyservice:
+    description: "Currency conversion service"
+    namespace: default
+    port: 7000
+    depends_on: []
+    exposes_to:
+      - frontend
+      - checkoutservice
+      - paymentservice
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  emailservice:
+    description: "Sends order confirmation emails"
+    namespace: default
+    port: 5000
+    depends_on: []
+    exposes_to:
+      - checkoutservice
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  adservice:
+    description: "Provides advertisement recommendations"
+    namespace: default
+    port: 9555
+    depends_on: []
+    exposes_to:
+      - frontend
+    health_endpoint: /health
+    containers:
+      - name: server
+    dependency_confidence: user_defined
+
+  loadgenerator:
+    description: "Generates synthetic traffic for testing"
+    namespace: default
+    port: 8089
+    depends_on:
+      - frontend
+    exposes_to: []
+    health_endpoint: /
+    containers:
+      - name: main
     dependency_confidence: user_defined
