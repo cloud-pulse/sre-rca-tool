@@ -1,0 +1,3 @@
+## 2024-05-23 - Compiled Regex in LogProcessor
+**Learning:** The `LogProcessor` was originally using uncompiled `re.search` and `re.sub` functions inside a hot loop traversing every log line. This caused a significant performance penalty due to recompiling regex statements repeatedly, particularly in methods like `_extract_message` where multiple substitutions are made per line.
+**Action:** Always pre-compile regular expressions as class or module level variables (`re.compile`) when they are used repeatedly, especially within loops traversing large files such as logs. The optimization speeds up string replacement significantly.
