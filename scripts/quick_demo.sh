@@ -1,7 +1,7 @@
 #!/bin/bash
 # Quick demo script for dissertation viva
-# Shows key features of the tool
-# Requires: ollama serve running
+# Shows key features of the SRE-AI tool
+# Entry point: python ai_sre.py
 
 PROJ="/c/playground/sre-rca-tool"
 cd "$PROJ"
@@ -12,62 +12,39 @@ echo "  SRE-AI Tool — Dissertation Demo"
 echo "══════════════════════════════════════"
 echo ""
 
-# Get first service with dependencies
-TARGET=$(python -c "
-import sys, os
-sys.path.insert(0, os.getcwd())
-from core.service_graph import ServiceGraph
-g = ServiceGraph()
-services = g.get_all_service_names()
-for svc in services:
-    br = g.get_blast_radius(svc)
-    if br['downstream']:
-        print(svc)
-        break
-if not services:
-    print('test-service')
-" 2>/dev/null)
-
 echo "Demo 1: System status"
 echo "──────────────────────"
-python main.py status
+python ai_sre.py status
 echo ""
 read -p "Press Enter for Demo 2..."
 
 echo ""
-echo "Demo 2: Standard log analysis (RAG mode)"
-echo "─────────────────────────────────────────"
-python main.py analyze logs/test.log \
-    --mode rag --output rich
+echo "Demo 2: RAG-based RCA (default mode)"
+echo "─────────────────────────────────────"
+python ai_sre.py analyse payment-service
 echo ""
 read -p "Press Enter for Demo 3..."
 
 echo ""
-echo "Demo 3: Baseline vs RAG comparison"
+echo "Demo 3: Baseline analysis (no RAG)"
 echo "────────────────────────────────────"
-python main.py compare logs/test.log
+python ai_sre.py analyse payment-service --baseline
 echo ""
 read -p "Press Enter for Demo 4..."
 
 echo ""
-echo "Demo 4: Natural language investigation"
-echo "───────────────────────────────────────"
-echo "Command: ai-sre 'check $TARGET'"
-python ai_sre.py "check $TARGET"
+echo "Demo 4: Side-by-side comparison + report"
+echo "─────────────────────────────────────────"
+python ai_sre.py analyse payment-service --compare
 echo ""
 read -p "Press Enter for Demo 5..."
 
 echo ""
-echo "Demo 5: Service graph"
-echo "──────────────────────"
-python -c "
-import sys, os
-sys.path.insert(0, os.getcwd())
-from core.service_graph import ServiceGraph
-g = ServiceGraph()
-g.print_graph()
-"
+echo "Demo 5: Log cleaning"
+echo "─────────────────────"
+python ai_sre.py clean-logs logs/test.log
 echo ""
+
 echo "══════════════════════════════════════"
 echo "  Demo complete."
 echo "══════════════════════════════════════"

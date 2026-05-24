@@ -10,4 +10,4 @@
 - I want maintain a single .py file for config of the API, So let say if i am using any any localluy hosted LLM or any API fro  top companines liek Nvidia/ ChatGPT/ som otehr, I h=just wan to update the API url, API key ,
 - check and add a swicth between the kubernetes and local modle, I hope iths alredy ther but check teh functionality is perfecl, wotking or no, for now i wam using teh sam emodel to embeed thte data, reasoning, all stuff, can i config multiple models for multiple,works, if yes wna would be you suggestiosn, i wan to usse API provided by teh NVidia , from the build.nvidia, and also i got the copilot pro access so can i get get any apis to acces llm ofrm the co-pilot, 
 - coudl you think of any suggestin i =that i need to impreove for my project ..?
-- 
+- planning to use the https://github.com/GoogleCloudPlatform/microservices-demo for teh demo 

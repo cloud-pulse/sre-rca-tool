@@ -12,6 +12,7 @@ sys.path.insert(
 import requests
 import re
 import time
+import flags
 from core.logger import get_logger
 from core.llm_cache import LLMCache
 from flags import (
@@ -25,6 +26,7 @@ from flags import (
 from core.sre_investigator import (
     InvestigationReport
 )
+from core.llm_provider import provider
 
 log = get_logger("llm_analyzer")
 
@@ -35,151 +37,25 @@ if __name__ == "__main__" and __package__ is None:
 
 class LLMAnalyzer:
     """
-    Analyzes incident context using Ollama and phi3:mini model.
+    Analyzes incident context using the configured LLM provider.
     Supports baseline and RAG modes.
     """
 
     def __init__(self):
         """Initialize LLMAnalyzer with configuration."""
-        from config import OLLAMA_URL, OLLAMA_MODEL
-
-        self.ollama_url = OLLAMA_URL
-        self.model = OLLAMA_MODEL
+        self.model = flags.LLM_REASONING_MODEL
         self.timeout = LLM_TIMEOUT
         self.max_retries = 2
         self.max_prompt_chars = 7000
-        self._warmed_up = False
-        self._connection_checked = False
         self.cache = LLMCache()
 
         log.step(f"LLMAnalyzer initialized — model: {self.model}")
 
     def check_ollama_connection(self) -> bool:
-        """
-        Verify Ollama is running and reachable.
-
-        Returns:
-            True if Ollama is reachable, False otherwise
-        """
-        if self._connection_checked:
-            return True   # skip repeat check
-        # Step 1: ping Ollama base URL
-        try:
-            response = requests.get(f"{self.ollama_url}/", timeout=5)
-            if response.status_code != 200:
-                log.error("Cannot reach Ollama at localhost:11434")
-                log.error("Make sure Ollama is running: ollama serve")
-                self._connection_checked = True
-                return False
-        except (requests.ConnectionError, requests.Timeout):
-            log.error("Cannot reach Ollama at localhost:11434")
-            log.error("Make sure Ollama is running: ollama serve")
-            self._connection_checked = True
-            return False
-        except Exception:
-            log.error("Cannot reach Ollama at localhost:11434")
-            log.error("Make sure Ollama is running: ollama serve")
-            self._connection_checked = True
-            return False
-
-        # Step 2: check if phi3:mini is pulled
-        try:
-            response = requests.get(f"{self.ollama_url}/api/tags", timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                models = data.get("models", [])
-                phi3_found = any(
-                    "phi3" in model.get("name", "").lower() for model in models
-                )
-                if not phi3_found:
-                    log.warn("phi3:mini not found locally")
-                    log.warn("Run: ollama pull phi3:mini")
-                    log.warn("This may take a few minutes...")
-                    self._connection_checked = True
-                    return False
-            else:
-                log.error("Cannot get model list from Ollama")
-                self._connection_checked = True
-                return False
-        except Exception as e:
-            log.error(f"Failed to check models: {e}")
-            self._connection_checked = True
-            return False
-
-        # Step 3: do a quick warmup call with tiny prompt
-        try:
-            payload = {
-                "model": self.model,
-                "prompt": "Reply with one word: ready",
-                "stream": False,
-                "options": {"temperature": 0.2, "top_p": 0.9, "num_predict": 10},
-            }
-            response = requests.post(
-                f"{self.ollama_url}/api/generate", json=payload, timeout=60
-            )
-            if response.status_code == 200:
-                data = response.json()
-                response_text = data.get("response", "").strip().lower()
-                if "ready" in response_text:
-                    log.debug("Ollama warmup OK")
-                else:
-                    log.warn("Warmup response unexpected, but proceeding")
-            else:
-                log.warn("Warmup call failed, but proceeding")
-        except requests.Timeout:
-            log.warn("Warmup timed out, model may be slow but proceeding")
-        except Exception as e:
-            log.warn(f"Warmup failed: {e}, but proceeding")
-
-        log.success("Ollama connection OK")
-        self._connection_checked = True
         return True
 
     def warmup(self) -> bool:
-        if self._warmed_up:
-            return True
-        # Send a tiny prompt to pre-load model
-        # Only if LLM_WARMUP flag is True
-        # Only if Ollama is reachable
-        # Use a very short prompt:
-        #   "Reply with one word: ready"
-        # Set short timeout: 90s
-        # Print progress to user:
-        #   "Warming up phi3:mini..."
-        #   "Model ready." on success
-        #   "Warmup skipped." if flag=false
-        # Return True if successful
-        if not LLM_WARMUP:
-            log.debug("Warmup disabled by flag")
-            self._warmed_up = True
-            return True
-        try:
-            log.info("[dim]Warming up phi3:mini...[/dim]")
-            payload = {
-                "model": self.model,
-                "prompt": "Reply: ready",
-                "stream": False,
-                "options": {"num_predict": 5, "keep_alive": "10m"},
-            }
-            response = requests.post(
-                f"{self.ollama_url}/api/generate", json=payload, timeout=90
-            )
-            if response.status_code == 200:
-                log.success("Model ready.")
-                self._warmed_up = True
-                return True
-            else:
-                log.debug("Warmup call failed, but proceeding")
-                self._warmed_up = True
-                return True
-        except requests.Timeout:
-            log.debug("Warmup timed out — model will load on first call")
-            self._warmed_up = True
-            return True
-        except Exception as e:
-            log.debug(f"Warmup failed: {e}")
-            self._warmed_up = True
-            return True
+        return True
 
     def build_baseline_prompt(self, context: dict) -> str:
         """
@@ -259,80 +135,6 @@ CONFIDENCE REASON: [one sentence explaining the score]
         log.warn(f"Prompt trimmed from {len(prompt)} to {len(trimmed_prompt)} chars")
 
         return trimmed_prompt
-
-    def _call_ollama(self, prompt: str) -> str:
-        """
-        Call Ollama API with the given prompt using streaming.
-
-        Args:
-            prompt: The prompt string to send to LLM
-
-        Returns:
-            Response text from LLM, or empty string on error
-        """
-        import json
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                payload = {
-                    "model": self.model,
-                    "prompt": prompt,
-                    "stream": True,
-                    "options": {
-                        "temperature": 0.2,
-                        "top_p": 0.9,
-                        "num_predict": LLM_MAX_TOKENS,
-                        "keep_alive": ("10m" if LLM_KEEP_ALIVE else "0"),
-                    },
-                }
-
-                response = requests.post(
-                    f"{self.ollama_url}/api/generate",
-                    json=payload,
-                    stream=True,
-                    timeout=(10, self.timeout),
-                )
-
-                if response.status_code == 200:
-                    full_response = ""
-                    token_count = 0
-                    log.debug("Receiving response")
-
-                    for line in response.iter_lines():
-                        if line:
-                            line_str = line.decode("utf-8")
-                            try:
-                                data = json.loads(line_str)
-                                if "response" in data:
-                                    chunk = data["response"]
-                                    full_response += chunk
-                                    token_count += 1
-                                    if token_count % 10 == 0:
-                                        log.debug(".")
-                                if data.get("done", False):
-                                    break
-                            except json.JSONDecodeError:
-                                continue
-
-                    print()  # Newline after dots
-                    return full_response
-                else:
-                    print(f"ERROR: Ollama returned status {response.status_code}")
-
-            except requests.ConnectionError:
-                print("ERROR: Cannot connect to Ollama")
-            except requests.Timeout:
-                print(f"ERROR: Ollama request timed out after {self.timeout}s")
-            except Exception as e:
-                print(f"ERROR: Failed to call Ollama: {e}")
-
-            if attempt < self.max_retries:
-                print(
-                    f"Retrying in 5 seconds... (attempt {attempt + 2}/{self.max_retries + 1})"
-                )
-                time.sleep(5)
-
-        return ""
 
     def _parse_response(self, raw: str, debug: bool = False) -> dict:
 
@@ -502,19 +304,6 @@ CONFIDENCE REASON: [one sentence explaining the score]
         print(f"Timeout  : {self.timeout}s")
         print()
 
-        # Check Ollama connection
-        if not self.check_ollama_connection():
-            return {
-                "mode": "baseline_failed",
-                "root_cause": "Could not reach Ollama",
-                "affected_services": "",
-                "failure_chain": "",
-                "suggested_fixes": [],
-                "confidence": 0,
-                "confidence_reason": "Ollama not running",
-                "raw_response": "",
-            }
-
         # Build prompt
         prompt = self.build_baseline_prompt(context)
         print(f"Prompt   : {len(prompt)} chars")
@@ -529,8 +318,8 @@ CONFIDENCE REASON: [one sentence explaining the score]
             return cached
 
         # Call LLM
-        print("Sending to Ollama...")
-        raw_response = self._call_ollama(prompt)
+        print("Sending to LLM provider...")
+        raw_response = provider.generate(prompt)
 
         if not raw_response:
             return {
@@ -669,20 +458,6 @@ HISTORICAL MATCH: [yes/no — name of matched
         print(f"RAG ctx  : {len(rag_context)} chars of historical context")
         print()
 
-        # Check Ollama connection
-        if not self.check_ollama_connection():
-            return {
-                "mode": "rag_failed",
-                "root_cause": "Could not reach Ollama",
-                "affected_services": "",
-                "failure_chain": "",
-                "suggested_fixes": [],
-                "confidence": 0,
-                "confidence_reason": "Ollama not running",
-                "historical_match": "no",
-                "raw_response": "",
-            }
-
         # Build RAG prompt
         prompt = self.build_rag_prompt(context, rag_context)
 
@@ -695,8 +470,8 @@ HISTORICAL MATCH: [yes/no — name of matched
             return cached
 
         # Call LLM
-        print("Sending to Ollama...")
-        raw_response = self._call_ollama(prompt)
+        print("Sending to LLM provider...")
+        raw_response = provider.generate(prompt)
 
         if not raw_response:
             return {
@@ -1100,6 +875,7 @@ HISTORICAL MATCH: [yes/no — name of matched
         return self._trim_prompt(prompt)
 
     def analyze_investigation(
+                          self,
                           report,
                           investigator=None,
                           query: str = "") -> dict:
@@ -1132,15 +908,6 @@ HISTORICAL MATCH: [yes/no — name of matched
             )
             return cached
 
-        if not self.check_ollama_connection():
-            log.error(
-                "Ollama not running. "
-                "Start with: ollama serve"
-            )
-            return self._empty_investigation_result(
-                report
-            )
-
         log.info(
             f"\n[bold cyan]=== SRE-AI Deep "
             f"Investigation ===[/bold cyan]"
@@ -1163,10 +930,10 @@ HISTORICAL MATCH: [yes/no — name of matched
             f"{len(prompt)} chars[/dim]"
         )
         log.info(
-            "[dim]Sending to Ollama...[/dim]"
+            "[dim]Sending to LLM provider...[/dim]"
         )
 
-        raw = self._call_ollama(prompt)
+        raw = provider.generate(prompt)
 
         if not raw:
             log.error(
@@ -1446,6 +1213,11 @@ HISTORICAL MATCH: [yes/no — name of matched
             "raw_response": ""
         }
 
+    def analyse_with_windows(self, lines: list[str], service: str = "unknown") -> dict:
+        from core.window_analyzer import WindowAnalyzer
+        analyzer = WindowAnalyzer()
+        return analyzer.analyse(lines, service)
+
 
 def _extract_field(text: str, patterns: list[str]) -> str:
     # Try each pattern, return first match found
@@ -1481,7 +1253,7 @@ if __name__ == "__main__":
     from core.resource_collector import ResourceCollector
     from core.context_builder import ContextBuilder
     from core.rag_engine import RAGEngine
-    from config import HISTORICAL_LOGS_DIR
+    from flags import HISTORICAL_LOGS_DIR
 
     loader = LogLoader()
     processor = LogProcessor()
@@ -1489,12 +1261,6 @@ if __name__ == "__main__":
     builder = ContextBuilder()
     analyzer = LLMAnalyzer()
     rag = RAGEngine(HISTORICAL_LOGS_DIR)
-
-    print("--- Pre-flight: Ollama check ---")
-    connected = analyzer.check_ollama_connection()
-    if not connected:
-        print("Fix Ollama first: ollama serve")
-        exit(1)
 
     print("\n--- Building pipeline context ---")
     lines = loader.load("logs/test.log")

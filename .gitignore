@@ -2,6 +2,10 @@ jarvis
 __pycache__/*
 */__pycache__
 __pycache__
+.last_analyse.json
+.last_rca.json
+evaluation_report.txt
+reports/*
 
 # Feature flags (contains local settings)
 .env
@@ -10,7 +14,9 @@ __pycache__
 .llm_cache/
 
 # ChromaDB data
-.chromadb/
+.chromadb/*
+.chromadb
+*/.chromadb/*
 
 # Last RCA result
 .last_rca.json

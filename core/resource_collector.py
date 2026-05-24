@@ -86,7 +86,7 @@ class ResourceCollector:
                     "restarts": 5,
                     "status": "CrashLoopBackOff",
                     "age": "2d",
-                    "namespace": "sre-demo"
+                    "namespace": "default"
                 }
             elif svc == warning_svc:
                 result[svc] = {
@@ -100,7 +100,7 @@ class ResourceCollector:
                     "restarts": 2,
                     "status": "Running",
                     "age": "2d",
-                    "namespace": "sre-demo"
+                    "namespace": "default"
                 }
             else:
                 result[svc] = {
@@ -114,7 +114,7 @@ class ResourceCollector:
                     "restarts": 0,
                     "status": "Running",
                     "age": "2d",
-                    "namespace": "sre-demo"
+                    "namespace": "default"
                 }
 
         return result

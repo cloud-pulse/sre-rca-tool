@@ -1,327 +1,199 @@
 # AI-Assisted SRE Framework for Root Cause Analysis in Cloud-Native Microservices
 
-**Student**: Veerapalli Gowtham  
-**BITS ID**: 2024MT03007  
-**Program**: M.Tech Cloud Computing — BITS Pilani WILP  
-**Course**: CCZG628T Dissertation  
-**Supervisor**: Kuna Aditya, TCS Hyderabad  
-**Examiner**: Lavanya Vadrevu, TCS Hyderabad  
-
-## 1. ABSTRACT
-
-Root Cause Analysis (RCA) in cloud-native microservices environments remains a critical challenge for Site Reliability Engineers (SREs) due to fragmented evidence sources, complex service dependencies, and the sheer volume of unstructured logs. Manual debugging across pod logs, Kubernetes events, resource metrics, and deployment histories is time-consuming and error-prone, often taking hours or days.
-
-This dissertation presents an AI-Assisted SRE Framework that automates RCA by integrating multi-source evidence collection, rule-based pattern detection, Retrieval-Augmented Generation (RAG), and structured LLM analysis. The CLI-based tool (`ai-sre`) operates in both file-based and live Kubernetes modes, collects comprehensive evidence (pod logs, `kubectl describe`, events, metrics, rollouts), detects 20 failure patterns across 5 categories, resolves service blast radius via dynamic dependency graphs, retrieves similar historical incidents using ChromaDB + sentence-transformers RAG, and generates ranked causes, cascade timelines, and remediation commands using local Ollama phi3:mini LLM.
-
-Key contributions include: (1) a unified SRE investigation pipeline with feature flags for flexible deployment; (2) hybrid rule-LLM analysis reducing false positives; (3) full RAG implementation outperforming baseline LLM by 35% in confidence scores (evaluated on 6 failure scenarios); (4) natural language CLI interface eliminating kubectl memorization.
-
-Results demonstrate 80% accuracy in pinpointing primary causes within 2-5 minutes locally, generating copy-pasteable `kubectl` fixes. Limitations include local LLM latency and mock data scope, addressed in future work. This framework advances AIOps by providing context-aware, production-ready RCA for SRE teams.
-
-*(248 words)*
-
-## 2. INTRODUCTION
-
-### 2.1 Motivation
-Modern cloud-native applications comprise hundreds of microservices orchestrated by Kubernetes, generating terabytes of logs daily. SRE teams face mounting pressure to maintain 99.99% uptime amid frequent deployments and dynamic scaling. Manual RCA involves correlating disjointed data sources—application logs, Istio sidecar proxies, Kubernetes events, resource metrics, and deployment histories—leading to MTTR exceeding 4 hours for complex incidents (Google SRE Book, 2016).
-
-### 2.2 Problem Statement
-Existing tools like `kubectl logs`, ELK stacks, or Jaeger provide isolated views without automated synthesis. SREs lack:
-- Unified evidence aggregation across sources.
-- Blast radius computation for service dependencies.
-- Historical incident matching for pattern recognition.
-- Structured RCA output with remediation steps.
-
-### 2.3 Research Questions
-1. Can rule-based pre-analysis + RAG-augmented LLM produce accurate RCA faster than manual methods?
-2. How does full RAG (ChromaDB + embeddings) improve LLM confidence vs. baseline prompts?
-3. Is a feature-flagged CLI tool viable for both development and production SRE workflows?
-
-### 2.4 Scope and Boundaries
-This work focuses on containerized Python microservices with Istio service mesh. Excludes stateful workloads, non-Kubernetes orchestration, and real-time streaming analysis.
-
-## 3. BACKGROUND AND LITERATURE REVIEW
-
-### 3.1 Log-based Anomaly Detection
-Zhang et al. (2019) introduced DeepLog using LSTM for log sequence anomaly detection, achieving 96% accuracy on HDFS logs. Limitations: lacks multi-source Kubernetes context and causal inference.
-
-### 3.2 Failure Diagnosis in Microservices
-Chen et al. (2020) proposed MicroRCA, using invariant mining across microservices. Strong on dependencies but ignores unstructured logs and requires labeled training data.
-
-### 3.3 Retrieval-Augmented Generation (RAG)
-Lewis et al. (2021) demonstrated RAG outperforming parametric memory in knowledge-intensive NLP tasks by 20-30%. Extended here to SRE domain with chunked logs and embedding similarity.
-
-### 3.4 AIOps and AI-Assisted Operations
-Gartner (2023) predicts 40% AIOps adoption by 2025. Tools like Dynatrace Davis use ML but remain proprietary. Gap: open-source, LLM-powered RCA with editable prompts.
-
-**Identified Gap**: No framework combines rule-based filtering, dynamic service graphs, full RAG, and structured LLM output for end-to-end SRE RCA.
-
-## 4. SYSTEM ARCHITECTURE
-
-### 4.1 High-level Architecture
-
-```mermaid
-graph TD
-    A[User CLI Input<br>ai-sre 'check payment'] --> B[NL Parser<br/>Intent Detection]
-    B --> C[SRE Investigator<br/>Orchestrator]
-    C --> D[Evidence Collector]
-    D -->|File Mode<br/>.env SOURCE_KUBERNETES=false| E[Local Logs<br/>mock/logs/]
-    D -->|K8s Mode<br/>.env SOURCE_KUBERNETES=true| F[Kubernetes<br/>kubectl API]
-    C --> G[Pattern Detector<br/>20 Rules, 5 Categories]
-    C --> H[Service Graph<br/>services.yaml + Log Discovery]
-    H --> I[RAG Engine<br/>ChromaDB Query]
-    I --> J[LLM Analyzer<br/>Ollama phi3:mini]
-    J --> K[RCA Formatter<br/>Ranked Causes + Timeline + Fixes]
-    K --> L[Rich CLI Output<br/>Copy-pasteable kubectl]
-```
-
-### 4.2 RAG Pipeline
-
-```mermaid
-graph LR
-    A[Historical Logs<br/>logs/] --> B[Chunking<br/>200-token segments]
-    B --> C[Embeddings<br/>all-MiniLM-L6-v2]
-    C --> D[ChromaDB<br/>Vector Store]
-    E[Current Evidence<br/>Logs + Metrics + Events] --> F[Query Embedding]
-    F --> G[ChromaDB Similarity Search<br/>Top-K=5]
-    G --> H[Retrieved Contexts] --> I[Enriched LLM Prompt]
-    I --> J[Structured RCA Output]
-```
-
-### 4.3 Investigation Flow (Sequence Diagram)
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant CLI as CLI
-    participant SI as SREInvestigator
-    participant LL as LogLoader
-    participant RC as ResourceCollector
-    participant PD as PatternDetector
-    participant SG as ServiceGraph
-    participant RE as RAGEngine
-    participant LA as LLMAnalyzer
-    participant RF as RCAFormatter
-
-    U->>CLI: ai-sre "check payment"
-    CLI->>SI: investigate(service="payment")
-    SI->>LL: load_logs(namespace="default", service="payment")
-    SI->>RC: collect_resources(pod="payment-abc-123")
-    SI->>PD: detect_patterns(evidence)
-    PD->>SI: patterns_matched["OOM", "DB_TIMEOUT"]
-    SI->>SG: resolve_dependencies(service="payment")
-    SG->>RE: retrieve_historical(incident_signature)
-    RE->>SI: top_k_similar_incidents
-    SI->>LA: analyze(evidence + rag + patterns)
-    LA->>SI: structured_rca_response
-    SI->>RF: format_output(rca)
-    RF->>CLI: print_rich_table(cascade, fixes)
-    CLI->>U: Terminal Output
-```
-
-### 4.4 Service Dependency Graph Example
-
-```mermaid
-graph LR
-    AG[api-gateway] --> PS[payment-service]
-    AG --> AS[auth-service]
-    PS --> DB[database-service]
-    PS --> RQ[redis-queue]
-    AS --> DB
-    style PS fill:#f96
-```
-
-## 5. IMPLEMENTATION
-
-### 5.1 Feature Flag System
-All behaviors controlled via `.env`:
-
-```env
-# Core modes
-SOURCE_KUBERNETES=false
-ENABLE_RAG=true
-ENABLE_PATTERNS=true
-LLM_MODEL=phi3:mini
-
-# Optimizations
-LLM_CACHE_TTL=3600
-MAX_PROMPT_TOKENS=4000
-TOP_K_SIMILAR=5
-```
-
-`flags.py` provides typed accessors:
-
-```python
-from dotenv import load_dotenv
-load_dotenv()
-
-class Flags:
-    @property
-    def source_kubernetes(self) -> bool:
-        return os.getenv('SOURCE_KUBERNETES', 'false').lower() == 'true'
-```
-
-No code changes needed for mode switches.
-
-### 5.2 Rule-Based Pattern Detection
-20 patterns across 5 categories run BEFORE LLM (instant feedback):
-
-| Category | Patterns | Regex Example |
-|----------|----------|---------------|
-| OOMKilled | OOMKilled, NodePressure | `OOMKilled.*payment.*reason` |
-| Connection | DB_TIMEOUT, RedisError | `dial tcp.*connection refused` |
-| Deployment | ImagePullBackOff, CrashLoop | `back-off.*container` |
-| Resource | CPUThrottle, DiskPressure | `cpu throttle.*90%` |
-| Network | DNSResolution, IstioProxy | `no healthy upstream.*istio` |
-
-**Why pre-LLM**: Filters obvious cases (80% incidents), enriches LLM context, provides instant CLI feedback.
-
-### 5.3 Full RAG Implementation
-- **Chunking**: Logs split into 200-token segments preserving timestamps.
-- **Embeddings**: `sentence-transformers/all-MiniLM-L6-v2` (384-dim).
-- **Storage**: ChromaDB persistent collection `sre_historical`.
-- **Retrieval**: cosine similarity, Top-K=5 matches.
-Color(RGB(27,108,168))
-
-Beats numpy RAG via efficient vector search and metadata filtering.
-
-### 5.4 Multi-Service Blast Radius
-Bidirectional resolution from `services.yaml`:
-
-```yaml
-services:
-  payment-service:
-    depends_on: [database-service, redis-queue]
-    depended_by: [api-gateway]
-```
-
-Auto-discovers new services from logs: `grep -o 'service-[a-z-]*' logs/`.
-
-### 5.5 LLM Prompt Engineering
-
-Single enriched prompt structure:
-
-```
-CONTEXT:
-- Patterns: OOMKilled (pod restarts: 5), DB_TIMEOUT (5xx: 23%)
-- Service Graph: payment → db (blast radius: 2)
-- Historical: similar OOM in payment v1.2.3 (cause: memory leak)
-
-EVIDENCE:
-[chunked logs + kubectl output + metrics]
-
-TASK: Rank causes, build cascade timeline, generate kubectl fixes.
-OUTPUT FORMAT: JSON {causes: [...], timeline: [...], remediations: [...]}
-```
-
-### 5.6 LLM Performance Optimisation
-- Model warmup on first call.
-- Keep-alive connection pooling.
-- TTL cache (Redis-like, 1hr).
-- Streaming response via `rich.live`.
-- Dynamic prompt trimming (priority: patterns > recent logs > metrics).
-
-### 5.7 Natural Language CLI
-```bash
-$ ai-sre "check payment"  # Intent: investigate(payment-service)
-$ ai-sre "payment high latency"  # Intent: investigate + symptoms
-```
-
-Maps via fuzzy service matching against `services.yaml`.
-
-### 5.8 Kubernetes Integration
-Feature flag toggles `kubectl` commands:
-
-```python
-if flags.source_kubernetes:
-    logs = run_kubectl(f'logs {pod} -c app --tail=1000')
-else:
-    logs = read_local(f'mock/logs/{service}.log')
-```
-
-Same pipeline processes both.
-
-## 6. EVALUATION AND RESULTS
-
-### 6.1 Baseline vs RAG Comparison
-`evaluation/comparator.py` benchmark:
-
-| Scenario | Baseline LLM Confidence | RAG Confidence | Historical Match |
-|----------|------------------------|----------------|------------------|
-| DB Pool Exhaust | 0.67 | 0.89 | payment-2024-07-15 |
-| OOMKilled | 0.78 | 0.92 | auth-2024-07-10 |
-| Deployment Regression | 0.55 | 0.84 | api-2024-06-28 |
-
-RAG improves confidence by 25-35% via historical context.
-
-### 6.2 Test Scenarios
-1. **DB Connection Pool Exhaustion**: Pattern detects `dial tcp.*timeout`, RCA suggests `kubectl scale`.
-2. **OOM Killed Pod**: Metrics show 95% memory, suggests resource limits.
-3. **Secret Missing**: Events show `mount error`, suggests `kubectl create secret`.
-4. **Recent Deployment Regression**: Rollout history pins v1.2.4 image.
-5. **Istio Sidecar Crash**: Sidecar logs show proxy errors.
-6. **Network Policy**: Events show `no endpoints available`.
-
-Average RCA time: 2m47s (phi3:mini, 8GB RAM).
-
-### 6.3 Pattern Detection Accuracy
-Rules catch 82% primary indicators instantly; LLM confirms/refines.
-
-### 6.4 Limitations
-- phi3:mini latency (2-5min inference).
-- Mock data lacks real cluster dynamics.
-- 4k token prompt ceiling truncates large incidents.
-
-## 7. WHAT IS DONE (Completed Work)
-
-**Phase 1: Core Pipeline**
-- [x] CLI entrypoint with Click/Rich (`ai_sre.py`)
-- [x] Feature flag system (`flags.py`)
-- [x] Evidence collection (`core/log_loader.py`, `core/resource_collector.py`)
-- [x] 20 rule patterns (`core/log_processor.py`)
-
-**Phase 2: Intelligence Layer**
-- [x] Service dependency graph (`services.yaml` parsing)
-- [x] Full RAG (`core/rag_engine.py`: ChromaDB + embeddings)
-- [x] LLM integration (`core/llm_analyzer.py`: Ollama phi3)
-- [x] Context building (`core/context_builder.py`)
-- [x] RCA formatting (`output/rca_formatter.py`)
-
-**Phase 3: Polish & Eval**
-- [x] Natural language parsing
-- [x] LLM caching & warmup
-- [x] Evaluation comparator (`evaluation/comparator.py`)
-- [x] Streaming output & rich tables
-
-## 8. WHAT REMAINS / FUTURE WORK
-
-- **Kubernetes E2E**: Deploy sock-shop demo, inject failures.
-- **Performance**: GPU acceleration (Docker + NVIDIA), Llama 3.1 8B.
-- **Observability**: Prometheus metrics ingestion.
-- **Alerting**: Slack/PagerDuty webhooks.
-- **UI**: Gradio/Streamlit dashboard.
-- **Scale**: Multi-cluster, OpenTelemetry traces.
-
-## 9. IMPROVEMENTS IDENTIFIED
-
-1. **LLM Latency**: phi3:mini slow on CPU → GPU Docker container.
-2. **Prompt Trimming**: Context loss → Priority-based summarizer.
-3. **Mock Data**: Static logs → Dynamic Minikube sock-shop demo.
-4. **Service Discovery**: Manual `services.yaml` → `kubectl get svc` import.
-5. **Error Recovery**: LLM hallucination → Multi-LLM voting.
-
-## 10. CONCLUSION
-
-This dissertation delivers a production-grade AI-SRE framework achieving automated RCA for cloud-native microservices. Academic contributions include hybrid rule-RAG-LLM architecture and comprehensive evaluation benchmarks. Practically, reduces MTTR from hours to minutes with copy-pasteable fixes.
-
-All research questions affirmed: hybrid analysis accelerates RCA 10x; RAG boosts confidence 30%; CLI form factor suits SRE workflows. Objectives met: gap addressed between fragmented tools and intelligent synthesis.
-
-## 11. REFERENCES
-
-1. Zhang, X., et al. (2019). "DeepLog: Anomaly Detection and Diagnosis from System Logs through Deep Learning." *CCS '19*.
-2. Chen, M., et al. (2020). "MicroRCA: Root Cause Localization of Microservice Anomalies." *Middleware '20*.
-3. Lewis, P., et al. (2021). "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks." *NeurIPS 2020*.
-4. Ollama Documentation: https://ollama.ai
-5. ChromaDB: https://docs.trychroma.com
-6. Sentence Transformers: https://sbert.net
-
-*(~4200 words)*
+**Student:** Veerapalli Gowtham (BITS ID: 2024MT03007)  
+**Program:** M.Tech (Cloud Computing), BITS Pilani WILP  
+**Project Repository:** `sre-rca-tool`
+
+---
+
+## 1. Abstract
+Modern Kubernetes incidents require correlating logs, pod events, metrics, deployment history, endpoints, and service dependencies under strict time pressure. This project implements an AI-assisted SRE framework that automates this workflow for microservices using two operational modes: file-based analysis and live kubectl evidence analysis. The implementation combines staged evidence collection (`core/kubectl_rca_investigator.py`), rule-based pattern detection, LLM reasoning (`core/llm_provider.py`), and retrieval-augmented incident memory through ChromaDB (`core/rag_engine.py`, `core/incident_recorder.py`). A command-registry interactive shell (`ai_sre.py` + `core/command_registry.py`) provides analyst-friendly operations such as `analyse`, `--baseline`, `--compare`, and `chat`. The framework introduces confidence-aware sliding-window analysis (`core/window_analyzer.py`) and automatic incident recording with similarity gating to avoid duplicate historical entries. Current evaluation assets include mock kubectl scenarios and generated comparison reports under `reports/` and `logs/baseline/`. The implemented architecture demonstrates a practical path to reduce SRE toil and improve mean-time-to-resolution (MTTR) while preserving transparent, auditable RCA outputs for academic and operational contexts.
+
+---
+
+## 2. Introduction
+
+### 2.1 Problem statement
+Manual root cause analysis in Kubernetes microservices is slow because engineers must manually correlate distributed evidence from multiple control-plane and application sources.
+
+### 2.2 Motivation
+- Reduce repetitive SRE toil.
+- Improve MTTR by automating evidence gathering and first-pass diagnosis.
+- Preserve investigation consistency across repeated incidents.
+
+### 2.3 Objectives
+1. Build an end-to-end RCA assistant with interactive CLI UX.
+2. Support both file-mode and live kubectl-mode analysis.
+3. Integrate historical incident retrieval and similarity-based memory.
+4. Provide explainable outputs (confidence, reason, ranked fixes, known/new incident decision).
+
+---
+
+## 3. Literature Review
+
+### 3.1 Existing SRE tools
+Platforms such as Dynatrace, Datadog, PagerDuty, and New Relic provide strong observability and alerting. However, practical RCA often still requires human correlation across metrics, logs, topology, and deployment context, especially in custom microservice environments.
+
+### 3.2 RAG in operations
+RAG provides contextual retrieval from historical operational records, enabling incident-specific reasoning rather than generic model output. In this project, historical incidents are vector-indexed and reused during triage.
+
+### 3.3 LLM-assisted incident management
+LLMs can synthesize narrative RCA, failure chains, and remediation plans from mixed evidence. The key challenge is controlling hallucination and confidence quality, addressed here via structured prompts, confidence extraction, and pattern-based grounding.
+
+### 3.4 Gap addressed by this work
+This repository contributes a code-level integration of:
+- staged Kubernetes evidence collection,
+- rule-based pattern detection,
+- confidence-aware LLM RCA,
+- incident-memory reuse and deduplication,
+all in a single interactive SRE workflow.
+
+---
+
+## 4. System Design and Architecture
+
+### 4.1 Real architecture from implementation
+Primary interactive path:
+1. `ai_sre.py` prompt loop
+2. `core.command_registry.resolve()`
+3. Command handler (`AnalyseHandler` etc.)
+4. Pipeline execution (file or kubectl)
+5. Output rendering and `.last_rca.json` persistence
+
+### 4.2 Component diagram (textual)
+- `flags.py`: environment/config flags
+- `core/log_loader.py`, `core/log_processor.py`, `core/log_cleaner.py`: input normalization
+- `core/service_graph.py`: service topology + blast radius
+- `core/kubectl_client.py`, `core/kubectl_rca_investigator.py`: live evidence layer
+- `core/llm_provider.py`, `core/llm_analyzer.py`: reasoning and prompt/parse layer
+- `core/rag_engine.py`, `core/incident_recorder.py`: historical memory and similarity
+- `output/rca_formatter.py`, `evaluation/comparator.py`: presentation/evaluation
+
+### 4.3 Two operating modes
+- **File mode:** uses local log files (`logs/services/*.log` or `logs/test.log`) and sliding-window analysis.
+- **Kubectl mode:** uses live `kubectl` evidence collection and LLM narrative generation with optional baseline/compare execution.
+
+### 4.4 RAG pipeline design
+Current code path (`analyse` in file mode):
+`WindowAnalyzer.analyse()` → confidence extraction → `IncidentRecorder.check_and_save()` → similarity query against ChromaDB → save/embed if new.
+
+### 4.5 Kubectl RCA pipeline design (7 stages)
+Implemented in `KubectlRCAInvestigator.investigate(...)`:
+1. Pod Status
+2. Pod Events
+3. Pod Logs
+4. Cluster Resource Pressure
+5. Node Describe (stage 4b in code)
+6. Service Endpoints
+7. VirtualService (Istio, when present)
+
+Then `collect_all_evidence(report)` assembles LLM prompt material.
+
+### 4.6 Dependency analysis design
+- Static source: `services.yaml` (`depends_on`, `exposes_to`).
+- Runtime enrichment: `ServiceGraph.discover_from_logs(...)` attempts to discover new dependencies from log patterns.
+- Impact model: `ServiceGraph.get_blast_radius(...)` provides downstream/upstream/safe service sets.
+
+### 4.7 Incident recording and similarity detection
+- Similarity computed in `IncidentRecorder._query_similarity(...)`.
+- Thresholded known/new decision in `check_and_save(...)`.
+- New incidents saved to `logs/historical/incident_*.log` and embedded into ChromaDB.
+
+---
+
+## 5. Implementation
+
+### 5.1 Tech stack and rationale
+- Python 3.12: consistent runtime for CLI + data processing.
+- Rich/Click: robust terminal UX and command ergonomics.
+- ChromaDB: lightweight local vector store with persistent path `.chromadb`.
+- NVIDIA NIM / Ollama abstraction: provider flexibility via `LLMProvider`.
+- YAML-driven topology (`services.yaml`): explicit service dependency model.
+
+### 5.2 Key implementation decisions
+- **Sliding window (`WindowAnalyzer`)**: avoids oversized prompts while allowing confidence-based expansion.
+- **ChromaDB-based memory**: enables retrieval of prior incident context and duplicate suppression.
+- **Pattern detection before LLM (`PATTERNS`)**: raises grounded confidence and triage speed.
+- **Collect-all-evidence approach**: kubectl pipeline gathers broad context before LLM call, reducing premature conclusions.
+
+### 5.3 Challenges and solutions
+- **Embedding/vector dimension mismatch:** handled by `_is_dim_error()` and `_purge_and_reload()` in `IncidentRecorder`.
+- **Embedding consistency:** incident query and write paths both use `provider.embed(...)`.
+- **Design evolution:** moved toward evidence-complete collection before narrative generation in kubectl mode.
+
+---
+
+## 6. Evaluation
+
+### 6.1 Demo scenarios
+A `demo-scenarios.yaml` file is not present in the current repository snapshot. Operational scenarios are inferred from mock kubectl assets and `_detect_mock_scenario(...)` mapping in `core/sre_investigator.py`.
+
+Core failure scenarios used in code/demo flow:
+1. `oom-killed`
+2. `secret-missing`
+3. `image-pull-backoff`
+4. `pvc-not-bound`
+5. `probe-failure`
+6. `node-pressure`
+7. `istio-crash`
+
+(Additional application-level fallback scenario: `connection-pool-exhaustion`.)
+
+### 6.2 Expected RCA outputs per scenario
+For each scenario, expected output structure includes:
+- root cause statement,
+- confidence score and reason,
+- ranked remediation steps,
+- known/new incident decision (`incident_record`).
+
+### 6.3 RAG similarity improvement
+- `analyse --compare` and `evaluation/comparator.py` are implemented to compare baseline vs RAG.
+- Comparison artifacts are stored in `reports/compare_*.txt`.
+- Baseline snapshots for kubectl mode are stored under `logs/baseline/`.
+
+### 6.4 Confidence scoring methodology
+- Confidence is extracted from LLM output block (`CONFIDENCE: <n>%`) using regex in `WindowAnalyzer` and command handlers.
+- Sliding-window reanalysis is triggered when confidence is below threshold (default 60).
+
+---
+
+## 7. Results and Discussion
+
+### 7.1 What works well
+- Unified shell UX (`ai_sre.py`) for SRE workflows.
+- Repeat-incident handling with similarity gating and automatic historical save for new incidents.
+- Practical compare mode for dissertation demonstration (`--compare`).
+- Kubernetes evidence stages implemented and auditable.
+
+### 7.2 Current limitations
+- No formal automated test suite directory yet.
+- Some legacy paths in `main.py` coexist with the command-registry flow.
+- Scenario definitions are file-driven and inferred; no centralized `demo-scenarios.yaml` contract in current snapshot.
+
+### 7.3 File mode vs kubectl mode (accuracy discussion)
+- File mode depends on available log completeness and parser quality.
+- Kubectl mode has richer evidence breadth (events, endpoints, node info), usually yielding better contextual RCA potential.
+- Comparative quality is measured through implemented confidence delta and report outputs, not yet a statistically complete benchmark in this snapshot.
+
+---
+
+## 8. Conclusion and Future Work
+
+### 8.1 Contributions summary
+This work delivers a functioning AI-assisted SRE RCA framework with command-driven UX, dual execution modes, historical incident memory, confidence-aware analysis, and explicit remediation output.
+
+### 8.2 Future directions
+1. Multi-cluster and multi-namespace federation support.
+2. Incident workflow integration (Slack/PagerDuty/Jira) for operational handoff.
+3. Guided auto-remediation and policy-controlled runbooks.
+4. Domain-tuned SRE model strategies (fine-tuned or tool-augmented).
+
+---
+
+## 9. References
+
+1. Google. *Site Reliability Engineering: How Google Runs Production Systems*. O’Reilly, 2016.
+2. Kubernetes Documentation. https://kubernetes.io/docs/
+3. ChromaDB Documentation. https://docs.trychroma.com/
+4. Lewis et al. “Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks.” NeurIPS, 2020.
+5. OpenAI-compatible API and NVIDIA NIM documentation (as used by `LLMProvider`).
