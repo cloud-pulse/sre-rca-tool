@@ -196,25 +196,27 @@ class AnalyseHandler(BaseHandler):
 
     def _handle_kubectl(self, service: str) -> str:
         from core.service_graph import ServiceGraph
-        from core.kubectl_rca_investigator import run_kubectl_rca
+        from core.kubectl_rca_investigator import (
+            run_kubectl_rca, collect_all_evidence
+        )
+        from core.incident_recorder import IncidentRecorder
         from core.llm_provider import provider
         import re
 
         namespace = K8S_NAMESPACE or "default"
         sg = ServiceGraph()
 
-        # ── Step 1: Resolve service name ──────────────────────────────────
+        # ── Step 1: Resolve service name ─────────────────────────────────
         console.print(f"\n[dim]Resolving service '{service}'...[/dim]")
         resolved, found = self._resolve_service(service, sg, namespace)
 
-        # ── Step 2: Early exit if not found anywhere ──────────────────────
         if not found:
             from rich.panel import Panel
             console.print(Panel(
                 f"[bold red]Service '[white]{service}[/white]' not found.[/bold red]\n\n"
-                f"[white]It does not exist in [cyan]services.yaml[/cyan] "
-                f"or in the cluster namespace '[cyan]{namespace}[/cyan]'.[/white]\n\n"
-                f"[dim]Run [bold]list-services[/bold] to see all available services.[/dim]",
+                f"[white]Not in [cyan]services.yaml[/cyan] or namespace "
+                f"'[cyan]{namespace}[/cyan]'.[/white]\n\n"
+                f"[dim]Run [bold]list-services[/bold] to see available services.[/dim]",
                 title="[bold red]Service Not Found[/bold red]",
                 border_style="red",
                 padding=(1, 2),
@@ -226,39 +228,49 @@ class AnalyseHandler(BaseHandler):
             f"in namespace [bold]{namespace}[/bold]...[/dim]\n"
         )
 
-        # ── Step 3: Run sequential RCA pipeline ───────────────────────────
-        rca = run_kubectl_rca(resolved, namespace, service_graph=sg)
+        # ── Step 2: Run full evidence collection pipeline ─────────────────
+        report = run_kubectl_rca(resolved, namespace, service_graph=sg)
 
-        # ── Step 4: Collect evidence into readable text ───────────────────
-        evidence_text = self._collect_kubectl_evidence(rca)
+        # ── Step 3: Flatten evidence for LLM ─────────────────────────────
+        evidence_text = collect_all_evidence(report)
 
-        # ── Step 5: Build prompt + call LLM ──────────────────────────────
-        prompt = self._build_kubectl_prompt(resolved, rca, evidence_text)
+        # ── Step 4: Build prompt + call LLM ──────────────────────────────
+        prompt = self._build_kubectl_prompt(resolved, evidence_text)
         console.print("[dim]Generating narrative RCA...[/dim]\n")
         narrative = provider.generate(prompt)
 
-        # ── Step 6: Extract confidence (reuse WindowAnalyzer approach) ────
-        confidence_match = re.search(r"CONFIDENCE:\s*(\d+)%", narrative, re.IGNORECASE)
-        confidence = int(confidence_match.group(1)) if confidence_match else rca.get("confidence", 0)
+        # ── Step 5: Extract confidence ───────────────────────────────────
+        conf_match = re.search(r"CONFIDENCE:\s*(\d+)%", narrative, re.IGNORECASE)
+        confidence = int(conf_match.group(1)) if conf_match else 0
 
-        # ── Step 7: Shape result dict to match _print_analysis_result() ───
+        # ── Step 6: Incident recording (skip if no issue found) ─────────
+        record = {"saved": False, "reason": "kubectl_live", "similarity_score": 0.0}
+        no_issue_signals = [
+            "no issue", "no clear", "no failure", "healthy",
+            "operating normally", "no root cause"
+        ]
+        issue_found = not any(
+            s in narrative.lower() for s in no_issue_signals
+        ) and confidence >= 50
+
+        if issue_found:
+            # Convert evidence to log lines for recorder (same interface as file mode)
+            evidence_lines = evidence_text.splitlines()
+            recorder = IncidentRecorder()
+            record = recorder.check_and_save(narrative, resolved, evidence_lines)
+
+        # ── Step 7: Shape result dict for _print_analysis_result() ──────
         result = {
-            "service":               resolved,
-            "windows_used":          "Live (kubectl)",
-            "confidence":            confidence,
-            "analysis":              narrative,
+            "service":                resolved,
+            "windows_used":           "Live (kubectl)",
+            "confidence":             confidence,
+            "analysis":               narrative,
             "low_confidence_warning": confidence < 70,
-            "incident_record": {
-                "saved":            False,
-                "reason":           rca.get("evidence_stage") or "kubectl_live",
-                "similarity_score": 0.0,
-            },
+            "incident_record":        record,
         }
 
-        # ── Step 8: Print using EXISTING _print_analysis_result() ─────────
-        # Swap "Windows used" label for kubectl-specific fields by printing
-        # kubectl context BEFORE calling the standard renderer
-        self._print_kubectl_context(rca, resolved, namespace)
+        # ── Step 8: Print kubectl context then standard result ──────────
+        self._print_kubectl_context(report, resolved, namespace)
         _print_analysis_result(result, mode="kubectl")
         return "ok"
 
@@ -336,39 +348,24 @@ class AnalyseHandler(BaseHandler):
 
         return "\n\n".join(sections) if sections else "No evidence collected."
 
-    def _build_kubectl_prompt(self, service: str, rca: dict, evidence_text: str) -> str:
-        """
-        Build the LLM prompt using the same style as WindowAnalyzer._build_prompt().
-        Injects the structured RCA finding as additional context so the LLM
-        produces a richer, more accurate narrative.
-        """
-        dep_chain = rca.get("dependency_chain", [])
-        dep_chain_str = " → ".join(dep_chain) if dep_chain else "none"
-        preliminary_cause = rca.get("root_cause", "unknown")
-        preliminary_conf  = rca.get("confidence", 0)
-
+    def _build_kubectl_prompt(self, service: str, evidence_text: str) -> str:
         return f"""You are an expert Site Reliability Engineer performing root cause analysis.
 
 Service: {service}
 Source: Live Kubernetes cluster (kubectl)
 
-Preliminary finding from automated rule-based analysis:
-- Root cause candidate: {preliminary_cause}
-- Confidence: {preliminary_conf}%
-- Dependency chain: {dep_chain_str}
-
 --- KUBECTL EVIDENCE START ---
 {evidence_text}
 --- KUBECTL EVIDENCE END ---
 
-Using the evidence above, analyse this incident and identify:
+Analyse this evidence and identify:
 1. Root cause of any failures or anomalies
 2. Sequence of events leading to failure
 3. Affected services and impact
 4. Recommended remediation steps
 
-If the preliminary finding is supported by the evidence, expand on it with detail.
-If the evidence contradicts it, override it with your own conclusion.
+If everything appears healthy, clearly state there are no issues found
+and provide any recommendations to improve reliability.
 
 At the end of your analysis, you MUST include this block exactly:
 CONFIDENCE: <number>%
@@ -378,37 +375,49 @@ Confidence should reflect how complete the picture is:
 - 80-100%: clear root cause, full evidence visible
 - 60-79%: likely root cause but some gaps
 - 40-59%: partial picture, more context needed
-- below 40%: insufficient data"""
+- below 40%: insufficient data or no issues found"""
 
-    def _print_kubectl_context(self, rca: dict, service: str, namespace: str) -> None:
-        """
-        Print a small kubectl-specific context block BEFORE the standard
-        _print_analysis_result() renders. Shows pod name, evidence stage,
-        dependency chain — the fields file mode doesn't have.
-        """
+    def _print_kubectl_context(self, report, service: str, namespace: str) -> None:
         from rich.table import Table
         from rich import box
 
+        ev = report.all_evidence
         ctx = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
         ctx.add_column(style="bold cyan", width=18)
         ctx.add_column(style="white")
 
-        ctx.add_row("Namespace",      namespace)
-        ctx.add_row("Affected Pod",   rca.get("affected_pod") or "N/A")
-        ctx.add_row("Evidence Stage", rca.get("evidence_stage") or "N/A")
+        ctx.add_row("Namespace", namespace)
 
-        dep_chain = rca.get("dependency_chain", [])
-        if dep_chain:
-            ctx.add_row("Root Chain", " → ".join(dep_chain))
+        pod_line = ev.get("pod_status", "")
+        pod_name = "N/A"
+        if pod_line and "status=" in pod_line:
+            pod_name = pod_line.strip().splitlines()[0].split(":")[0].strip()
+        ctx.add_row("Analysed Pod", pod_name)
 
-        dep_reports = rca.get("dependency_reports", [])
-        if dep_reports:
+        if ev.get("pod_node"):
+            ctx.add_row("Node", ev["pod_node"])
+
+        endpoints = ev.get("service_endpoints", "")
+        if "<none>" in endpoints or "notfound" in endpoints.lower():
+            ctx.add_row("Endpoints", "[bold red]None — no ready pods[/bold red]")
+        elif endpoints and "no endpoints" not in endpoints.lower():
+            ctx.add_row("Endpoints", "[bold green]Healthy[/bold green]")
+
+        if ev.get("virtual_service"):
+            ctx.add_row("Istio", "[bold green]VirtualService present[/bold green]")
+
+        if report.dependency_reports:
             dep_summary = []
-            for dep in dep_reports:
-                dep_svc  = dep.get("target_service", "?")
-                dep_conf = dep.get("confidence", 0)
-                status   = "⚠" if dep_conf >= 60 else "✓"
-                dep_summary.append(f"{status} {dep_svc} ({dep_conf}%)")
+            for dep in report.dependency_reports:
+                dep_status = dep.all_evidence.get("pod_status", "")
+                has_issue = any(
+                    s in dep_status for s in [
+                        "CrashLoop", "Error", "OOMKilled",
+                        "Pending", "ImagePull", "no pods found"
+                    ]
+                )
+                icon = "⚠" if has_issue else "✓"
+                dep_summary.append(f"{icon} {dep.target_service}")
             ctx.add_row("Dependencies", "  ".join(dep_summary))
 
         console.print(ctx)
