@@ -116,7 +116,7 @@ RAG_THRESHOLD      = _parse_int(_get("RAG_SIMILARITY_THRESHOLD", "60"), 60)
 HISTORICAL_LOGS_DIR    = _get("HISTORICAL_LOGS_DIR","logs/historical")
 CHROMA_DB_PATH         = _get("CHROMA_DB_PATH",".chromadb")
 DEFAULT_LOG_PATH       = _get("SOURCE_LOG_PATH","logs/test.log")
-EMBEDDING_MODEL        = _get("EMBEDDING_MODEL","all-MiniLM-L6-v2")
+EMBEDDING_MODEL        = _get("EMBEDDING_MODEL","nvidia/nv-embed-v1")
 
 # ─── HELPER FUNCTIONS ─────────────────────────
 

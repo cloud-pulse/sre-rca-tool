@@ -1,0 +1,78 @@
+# Incident: incident_20260525_035259 (auto-saved)
+# Service: emailservice
+# Timestamp: 2026-05-25T03:52:59.076893
+# Lines analysed: 60
+
+## RCA Analysis
+Based on the provided evidence, the analysis is as follows:
+
+1. **Root cause of any failures or anomalies**: The root cause of the failure appears to be related to the `check-smtp-config` container in the `emailservice` pod, which is experiencing a `CrashLoopBackOff` due to repeated failures. The exact cause of the failure is not explicitly stated in the logs, but the `BackOff` event suggests that the container is failing to start or run successfully.
+
+2. **Sequence of events leading to failure**: The sequence of events leading to the failure is as follows:
+   - The `emailservice` pod is pulled and started.
+   - The `check-smtp-config` container in the pod fails to start or run successfully, causing a `BackOff` event.
+   - The pod is restarted repeatedly due to the `CrashLoopBackOff` status, with 63 restarts attempted in the past 3 minutes.
+
+3. **Affected services and impact**: The affected service is the `emailservice`, which is currently unavailable due to the pod's `CrashLoopBackOff` status. The impact of this failure is that the email service is not functioning, potentially causing disruptions to users or dependent services.
+
+4. **Recommended remediation steps**: To resolve the issue, the following steps are recommended:
+   - Check the logs of the `check-smtp-config` container to determine the exact cause of the failure.
+   - Verify the configuration of the `check-smtp-config` container and the `emailservice` pod to ensure that they are correct and consistent.
+   - Attempt to restart the pod or container manually to see if the issue persists.
+   - If the issue persists, consider updating the image or configuration of the `check-smtp-config` container to resolve the underlying cause of the failure.
+
+The provided evidence does not show any issues with resource pressure, node conditions, or service endpoints, suggesting that the issue is isolated to the `emailservice` pod.
+
+CONFIDENCE: 60% REASON: The root cause of the failure is likely related to the `check-smtp-config` container, but the exact cause is not explicitly stated in the logs, leaving some gaps in the analysis.
+
+## Evidence Sample (first 50 lines)
+=== POD STATUS ===
+[{'name': 'emailservice-795bf69f4d-fqtg7', 'ready': '0/1', 'ready_count': 0, 'ready_total': 1, 'status': 'Init:CrashLoopBackOff', 'restarts': 63, 'age': '(3m10s'}]
+
+=== POD EVENTS ===
+LAST SEEN   TYPE      REASON    OBJECT                              MESSAGE
+13m         Normal    Pulled    pod/emailservice-795bf69f4d-fqtg7   (combined from similar events): Successfully pulled image "busybox:latest" in 2.159s (2.159s including waiting). Image size: 4445830 bytes.
+3m13s       Normal    Pulling   pod/emailservice-795bf69f4d-fqtg7   Pulling image "busybox:latest"
+3m9s        Warning   BackOff   pod/emailservice-795bf69f4d-fqtg7   Back-off restarting failed container check-smtp-config in pod emailservice-795bf69f4d-fqtg7_default(aa7cf271-095f-4147-aefd-d7deaabd660c)
+
+=== POD LOGS ===
+[Container: server]
+[Could not retrieve logs for pod emailservice-795bf69f4d-fqtg7: Error from server (BadRequest): container "server" in pod "emailservice-795bf69f4d-fqtg7" is waiting to start: PodInitializing]
+
+=== RESOURCE PRESSURE ===
+{'nodes': [{'error': 'error: Metrics API not available'}], 'pods': [{'error': 'error: Metrics API not available'}]}
+
+=== NODE DESCRIBE ===
+Conditions:
+  Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
+  ----             ------  -----------------                 ------------------                ------                       -------
+  MemoryPressure   False   Mon, 25 May 2026 03:52:01 +0530   Sun, 10 May 2026 15:27:49 +0530   KubeletHasSufficientMemory   kubelet has sufficient memory available
+  DiskPressure     False   Mon, 25 May 2026 03:52:01 +0530   Sun, 10 May 2026 15:27:49 +0530   KubeletHasNoDiskPressure     kubelet has no disk pressure
+  PIDPressure      False   Mon, 25 May 2026 03:52:01 +0530   Sun, 10 May 2026 15:27:49 +0530   KubeletHasSufficientPID      kubelet has sufficient PID available
+  Ready            True    Mon, 25 May 2026 03:52:01 +0530   Sun, 10 May 2026 15:27:49 +0530   KubeletReady                 kubelet is posting ready status
+Addresses:
+  InternalIP:  192.168.49.2
+  Hostname:    minikube
+Capacity:
+  cpu:                8
+  ephemeral-storage:  1055762868Ki
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  memory:             7071764Ki
+  pods:               110
+Allocatable:
+  cpu:                8
+  ephemeral-storage:  1055762868Ki
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  memory:             7071764Ki
+  pods:               110
+System Info:
+  Machine ID:                 86e0bfeb3f77427722393c2969964edb
+  System UUID:                86e0bfeb3f77427722393c2969964edb
+  Boot ID:                    bc047
+
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource           Requests     Limits
+  --------           --------     ------

@@ -46,20 +46,19 @@ def _print_analysis_result(result, mode):
     meta.add_column("Key", style="bold cyan", width=14)
     meta.add_column("Value", style="white")
     meta.add_row("Service", str(result.get('service', 'unknown')))
-    meta.add_row("Windows used", str(result.get('windows_used', 1)))
+    # meta.add_row("Windows used", str(result.get('windows_used', 1)))
     meta.add_row("Confidence", f"{result.get('confidence', 0)}%")
     meta.add_row("Warning", "[bold yellow]Low confidence — extended window used[/bold yellow]"
                  if low_conf else "[dim]None[/dim]")
     meta.add_row("Incident saved", "[bold green]Yes[/bold green]"
                  if record.get('saved') else "[dim]No[/dim]")
-    meta.add_row("Reason", str(record.get('reason', 'N/A')))
+    # meta.add_row("Reason", str(record.get('reason', 'N/A')))
     meta.add_row("Similarity", f"{record.get('similarity_score', 0.0):.1%}")
     c.print(meta)
 
     from rich.markdown import Markdown
     analysis_text = result.get('analysis', 'No analysis returned.')
     
-    # Strip the CONFIDENCE/REASON block from display — already shown in meta table
     import re
     clean_text = re.sub(r'\nCONFIDENCE:.*', '', analysis_text, flags=re.DOTALL).strip()
     
@@ -71,15 +70,28 @@ def _print_analysis_result(result, mode):
     ))
     c.print()
 
-def _print_baseline_result(response, service):
-    print("=== Baseline Analysis (no RAG) ===")
-    print(f"Service: {service}\n")
+def _print_baseline_result(response, service, confidence=0):
     from rich.console import Console
     from rich.markdown import Markdown
     from rich.panel import Panel
-    c = Console()
+    from rich.table import Table
+    from rich import box
     import re
+
+    c = Console()
     clean = re.sub(r'\nCONFIDENCE:.*', '', response, flags=re.DOTALL).strip()
+
+    c.print(Rule("Baseline Analysis — kubectl mode (no RAG)", style="bold blue"))
+
+    meta = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
+    meta.add_column("Key", style="bold cyan", width=14)
+    meta.add_column("Value", style="white")
+    meta.add_row("Service", service)
+    meta.add_row("Source", "Live Kubernetes cluster (kubectl)")
+    meta.add_row("Mode", "LLM-only — no vector retrieval")
+    meta.add_row("Confidence", f"{confidence}%")
+    c.print(meta)
+
     c.print(Panel(
         Markdown(clean),
         title="[bold white]Baseline Analysis — no RAG[/bold white]",
@@ -87,37 +99,55 @@ def _print_baseline_result(response, service):
         padding=(1, 2),
     ))
 
-def _save_compare_report(service, rag_result, baseline_response) -> str:
+def _save_compare_report(service, kubectl_result, baseline_response, baseline_confidence=0) -> str:
     import datetime
     import os
     os.makedirs("reports", exist_ok=True)
     report_path = f"reports/compare_{service}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-    
-    sim = rag_result.get('incident_record', {}).get('similarity_score', 0.0)
-    
+
+    record = kubectl_result.get('incident_record', {})
+    sim = record.get('similarity_score', 0.0)
+    kubectl_conf = kubectl_result.get('confidence', 0)
+    delta = kubectl_conf - baseline_confidence
+    better = "kubectl/RAG" if delta >= 0 else "Baseline"
+
     content = f"""# Comparison Report
 # Service: {service}
 # Generated: {datetime.datetime.now().isoformat()}
 
-## RAG Mode
-Confidence: {rag_result.get('confidence')}%
-Windows used: {rag_result.get('windows_used')}
+## kubectl / RAG Mode
+Confidence   : {kubectl_conf}%
+Source       : Live Kubernetes cluster
+Incident saved: {record.get('saved', False)}
+Similarity   : {sim:.1%}
 
-{rag_result.get('analysis')}
+{kubectl_result.get('analysis', '')}
 
-## Baseline Mode (no RAG)
+## Baseline Mode (no RAG, no history)
+Confidence   : {baseline_confidence}%
 
 {baseline_response}
 
 ## Summary
-RAG confidence:      {rag_result.get('confidence')}%
-Incident saved:      {rag_result.get('incident_record', {}).get('saved', False)}
-Similarity score:    {sim:.1%}"""
+kubectl/RAG confidence : {kubectl_conf}%
+Baseline confidence    : {baseline_confidence}%
+Delta                  : {abs(delta)}% — {better} is more confident
+Incident saved         : {record.get('saved', False)}
+Historical similarity  : {sim:.1%}
+"""
 
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(content)
-        
+
     return report_path
+
+def _save_last_rca(result: dict) -> None:
+    """Persist the last RCA result so ChatHandler can load it."""
+    try:
+        with open(".last_rca.json", "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, default=str)
+    except Exception as exc:
+        console.print(f"[dim yellow]Warning: could not save .last_rca.json — {exc}[/dim yellow]")
 
 
 class AnalyseHandler(BaseHandler):
@@ -126,7 +156,7 @@ class AnalyseHandler(BaseHandler):
 
     def handle(self, args: list[str]) -> str:
 
-        # ── Parse args (unchanged) ────────────────────────────────────────
+        # ── Parse args ────────────────────────────────────────────────────
         args_str = " ".join(args)
         parts = args_str.strip().split()
         baseline_mode = "--baseline" in parts
@@ -140,9 +170,9 @@ class AnalyseHandler(BaseHandler):
 
         # ── Branch: kubectl live mode ─────────────────────────────────────
         if USE_KUBERNETES:
-            return self._handle_kubectl(service)
+            return self._handle_kubectl(service, baseline_mode=baseline_mode, compare_mode=compare_mode)
 
-        # ── Branch: file mode (completely unchanged) ──────────────────────
+        # ── Branch: file mode (unchanged) ────────────────────────────────
         from core.log_loader import LogLoader
         loader = LogLoader()
         lines = loader.load_service_logs(service)
@@ -168,6 +198,7 @@ class AnalyseHandler(BaseHandler):
             report_path = _save_compare_report(service, rag_result, baseline_response)
             console.print(f"\nComparison report saved to: {report_path}")
             _print_analysis_result(rag_result, mode="RAG")
+            _save_last_rca(rag_result)
             return "ok"
 
         if baseline_mode:
@@ -187,14 +218,15 @@ class AnalyseHandler(BaseHandler):
         from core.window_analyzer import WindowAnalyzer
         analyzer = WindowAnalyzer()
         result = analyzer.analyse(lines, service=service)
+        _save_last_rca(result)
         _print_analysis_result(result, mode="RAG")
         return "ok"
 
     # ─────────────────────────────────────────────────────────────────────
-    # kubectl live mode — main entry
+    # kubectl live mode
     # ─────────────────────────────────────────────────────────────────────
 
-    def _handle_kubectl(self, service: str) -> str:
+    def _handle_kubectl(self, service: str, baseline_mode: bool = False, compare_mode: bool = False) -> str:
         from core.service_graph import ServiceGraph
         from core.kubectl_rca_investigator import (
             run_kubectl_rca, collect_all_evidence
@@ -211,7 +243,6 @@ class AnalyseHandler(BaseHandler):
         resolved, found = self._resolve_service(service, sg, namespace)
 
         if not found:
-            from rich.panel import Panel
             console.print(Panel(
                 f"[bold red]Service '[white]{service}[/white]' not found.[/bold red]\n\n"
                 f"[white]Not in [cyan]services.yaml[/cyan] or namespace "
@@ -228,38 +259,126 @@ class AnalyseHandler(BaseHandler):
             f"in namespace [bold]{namespace}[/bold]...[/dim]\n"
         )
 
-        # ── Step 2: Run full evidence collection pipeline ─────────────────
+        # ── Step 2: Run evidence collection (always needed) ───────────────
         report = run_kubectl_rca(resolved, namespace, service_graph=sg)
-
-        # ── Step 3: Flatten evidence for LLM ─────────────────────────────
         evidence_text = collect_all_evidence(report)
 
-        # ── Step 4: Build prompt + call LLM ──────────────────────────────
+        # ── BASELINE MODE ─────────────────────────────────────────────────
+        # Pure LLM call — same kubectl evidence, no RAG/incident history
+        if baseline_mode:
+            console.print("[dim]Running baseline analysis (no RAG)...[/dim]\n")
+            baseline_prompt = self._build_kubectl_prompt(resolved, evidence_text, mode="baseline")
+            baseline_narrative = provider.generate(baseline_prompt)
+
+            conf_match = re.search(r"CONFIDENCE:\s*(\d+)%", baseline_narrative, re.IGNORECASE)
+            baseline_confidence = int(conf_match.group(1)) if conf_match else 0
+
+            # Save baseline report
+            import datetime
+            os.makedirs("logs/baseline", exist_ok=True)
+            ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            baseline_path = f"logs/baseline/baseline_{resolved}_{ts}.json"
+            try:
+                with open(baseline_path, "w", encoding="utf-8") as f:
+                    json.dump({
+                        "service": resolved,
+                        "timestamp": datetime.datetime.now().isoformat(),
+                        "analysis": baseline_narrative,
+                        "confidence": baseline_confidence,
+                        "mode": "baseline_kubectl",
+                        "provider": "nvidia",
+                    }, f, indent=2)
+                console.print(f"[dim]Baseline saved → {baseline_path}[/dim]\n")
+            except Exception as e:
+                console.print(f"[dim yellow]Warning: could not save baseline file — {e}[/dim yellow]")
+
+            self._print_kubectl_context(report, resolved, namespace)
+            _print_baseline_result(baseline_narrative, resolved, baseline_confidence)
+            return "ok"
+
+        # ── COMPARE MODE ──────────────────────────────────────────────────
+        # Run kubectl/RAG analysis + baseline side-by-side
+        if compare_mode:
+            console.print("[dim]Running kubectl/RAG analysis...[/dim]")
+            kubectl_prompt = self._build_kubectl_prompt(resolved, evidence_text, mode="rag")
+            kubectl_narrative = provider.generate(kubectl_prompt)
+
+            conf_match = re.search(r"CONFIDENCE:\s*(\d+)%", kubectl_narrative, re.IGNORECASE)
+            kubectl_confidence = int(conf_match.group(1)) if conf_match else 0
+
+            console.print("[dim]Running baseline analysis (no RAG)...[/dim]")
+            baseline_prompt = self._build_kubectl_prompt(resolved, evidence_text, mode="baseline")
+            baseline_narrative = provider.generate(baseline_prompt)
+
+            base_conf_match = re.search(r"CONFIDENCE:\s*(\d+)%", baseline_narrative, re.IGNORECASE)
+            baseline_confidence = int(base_conf_match.group(1)) if base_conf_match else 0
+
+            # Incident recording for the kubectl/RAG result
+            # Use confidence threshold only — keyword matching is too fragile
+            # (LLM often says "healthy" even in a mixed narrative with real issues)
+            record = {"saved": False, "reason": "kubectl_compare", "similarity_score": 0.0}
+            if kubectl_confidence >= 50:
+                recorder = IncidentRecorder()
+                record = recorder.check_and_save(kubectl_narrative, resolved, evidence_text.splitlines())
+
+            kubectl_result = {
+                "service":                resolved,
+                "windows_used":           "Live (kubectl)",
+                "confidence":             kubectl_confidence,
+                "analysis":               kubectl_narrative,
+                "low_confidence_warning": kubectl_confidence < 70,
+                "incident_record":        record,
+            }
+
+            # Save comparison report
+            report_path = _save_compare_report(resolved, kubectl_result, baseline_narrative, baseline_confidence)
+
+            # Save to .last_rca.json (use the kubectl/RAG result as primary)
+            _save_last_rca({**kubectl_result, "mode": "compare_kubectl"})
+
+            # Display
+            self._print_kubectl_context(report, resolved, namespace)
+            _print_analysis_result(kubectl_result, mode="kubectl/RAG")
+
+            # Show baseline summary inline
+            console.print(Rule("Baseline Analysis (no RAG)", style="bold blue"))
+            _print_baseline_result(baseline_narrative, resolved, baseline_confidence)
+
+            # Show comparison summary
+            delta = kubectl_confidence - baseline_confidence
+            better = "kubectl/RAG" if delta >= 0 else "Baseline"
+            console.print(Panel(
+                f"[bold]kubectl/RAG confidence:[/bold]  {kubectl_confidence}%\n"
+                f"[bold]Baseline confidence:   [/bold]  {baseline_confidence}%\n"
+                f"[bold]Delta:                 [/bold]  {abs(delta)}% — [bold cyan]{better}[/bold cyan] is more confident\n"
+                f"[bold]Incident saved:        [/bold]  {'Yes' if record.get('saved') else 'No'}\n"
+                f"[bold]Similarity:            [/bold]  {record.get('similarity_score', 0.0):.1%}\n\n"
+                f"[dim]Full report → {report_path}[/dim]",
+                title="[bold magenta]Comparison Summary[/bold magenta]",
+                border_style="magenta",
+                padding=(1, 2),
+            ))
+            return "ok"
+
+        # ── STANDARD KUBECTL RCA (no flags) ──────────────────────────────
         prompt = self._build_kubectl_prompt(resolved, evidence_text)
         console.print("[dim]Generating narrative RCA...[/dim]\n")
         narrative = provider.generate(prompt)
 
-        # ── Step 5: Extract confidence ───────────────────────────────────
         conf_match = re.search(r"CONFIDENCE:\s*(\d+)%", narrative, re.IGNORECASE)
         confidence = int(conf_match.group(1)) if conf_match else 0
 
-        # ── Step 6: Incident recording (skip if no issue found) ─────────
+        # Use confidence threshold only for incident recording decision.
+        # Keyword matching ("healthy", "no issue") is unreliable — the LLM often
+        # includes those words even when describing a real failure scenario.
+        # A confidence >= 50% means the LLM had enough evidence to form a view;
+        # let IncidentRecorder decide via similarity whether it's truly new.
         record = {"saved": False, "reason": "kubectl_live", "similarity_score": 0.0}
-        no_issue_signals = [
-            "no issue", "no clear", "no failure", "healthy",
-            "operating normally", "no root cause"
-        ]
-        issue_found = not any(
-            s in narrative.lower() for s in no_issue_signals
-        ) and confidence >= 50
-
-        if issue_found:
-            # Convert evidence to log lines for recorder (same interface as file mode)
+        if confidence >= 50:
             evidence_lines = evidence_text.splitlines()
             recorder = IncidentRecorder()
             record = recorder.check_and_save(narrative, resolved, evidence_lines)
 
-        # ── Step 7: Shape result dict for _print_analysis_result() ──────
         result = {
             "service":                resolved,
             "windows_used":           "Live (kubectl)",
@@ -267,9 +386,12 @@ class AnalyseHandler(BaseHandler):
             "analysis":               narrative,
             "low_confidence_warning": confidence < 70,
             "incident_record":        record,
+            "mode":                   "kubectl",
         }
 
-        # ── Step 8: Print kubectl context then standard result ──────────
+        # FIX 1 — save so chat works
+        _save_last_rca(result)
+
         self._print_kubectl_context(report, resolved, namespace)
         _print_analysis_result(result, mode="kubectl")
         return "ok"
@@ -279,17 +401,11 @@ class AnalyseHandler(BaseHandler):
     # ─────────────────────────────────────────────────────────────────────
 
     def _resolve_service(self, service_name: str, sg, namespace: str) -> tuple[str, bool]:
-        """
-        Returns (resolved_name, found: bool).
-        found=False means not in yaml AND not in cluster → caller should exit early.
-        """
         from core.kubectl_client import get_deployment_list
 
-        # Exact match in services.yaml
         if service_name in sg.services:
             return service_name, True
 
-        # Fuzzy match in services.yaml
         fuzzy = [
             n for n in sg.services
             if service_name.lower() in n.lower() or n.lower() in service_name.lower()
@@ -298,7 +414,6 @@ class AnalyseHandler(BaseHandler):
             console.print(f"[dim]Matched '{service_name}' → '{fuzzy[0]}' from services.yaml[/dim]")
             return fuzzy[0], True
 
-        # kubectl cluster fallback
         console.print(f"[dim]'{service_name}' not in services.yaml — scanning cluster...[/dim]")
         deployments = get_deployment_list(namespace)
         matches = [d for d in deployments if service_name.lower() in d.lower()]
@@ -314,44 +429,24 @@ class AnalyseHandler(BaseHandler):
         # Not found anywhere
         return service_name, False
 
-    def _collect_kubectl_evidence(self, rca: dict) -> str:
+    def _build_kubectl_prompt(self, service: str, evidence_text: str, mode: str = "rag") -> str:
         """
-        Flatten all kubectl evidence stages into a readable text block
-        to use as the 'logs' context in the LLM prompt.
+        mode="rag"      — standard RCA (default, same as before)
+        mode="baseline" — explicitly tells LLM NOT to use historical patterns,
+                          pure analysis of what it sees in front of it
         """
-        all_evidence = rca.get("all_evidence", {})
-        sections = []
+        if mode == "baseline":
+            extra = (
+                "IMPORTANT: This is a BASELINE analysis. "
+                "Do NOT reference any historical incidents or patterns. "
+                "Analyse only the evidence provided below.\n\n"
+            )
+        else:
+            extra = ""
 
-        if all_evidence.get("pod_status"):
-            sections.append("=== POD STATUS ===\n" + all_evidence["pod_status"])
-
-        if all_evidence.get("pod_events"):
-            sections.append("=== POD EVENTS ===\n" + all_evidence["pod_events"][:2000])
-
-        if all_evidence.get("pod_logs"):
-            sections.append("=== POD LOGS ===\n" + all_evidence["pod_logs"][:3000])
-
-        if all_evidence.get("resource_pressure"):
-            sections.append("=== RESOURCE PRESSURE ===\n" + all_evidence["resource_pressure"])
-
-        # Dependency evidence
-        for dep_report in rca.get("dependency_reports", []):
-            dep_svc = dep_report.get("target_service", "unknown")
-            dep_evidence = dep_report.get("all_evidence", {})
-            dep_lines = []
-            if dep_evidence.get("pod_status"):
-                dep_lines.append(dep_evidence["pod_status"])
-            if dep_evidence.get("pod_logs"):
-                dep_lines.append(dep_evidence["pod_logs"][:1000])
-            if dep_lines:
-                sections.append(f"=== DEPENDENCY: {dep_svc} ===\n" + "\n".join(dep_lines))
-
-        return "\n\n".join(sections) if sections else "No evidence collected."
-
-    def _build_kubectl_prompt(self, service: str, evidence_text: str) -> str:
         return f"""You are an expert Site Reliability Engineer performing root cause analysis.
 
-Service: {service}
+{extra}Service: {service}
 Source: Live Kubernetes cluster (kubectl)
 
 --- KUBECTL EVIDENCE START ---
@@ -378,9 +473,6 @@ Confidence should reflect how complete the picture is:
 - below 40%: insufficient data or no issues found"""
 
     def _print_kubectl_context(self, report, service: str, namespace: str) -> None:
-        from rich.table import Table
-        from rich import box
-
         ev = report.all_evidence
         ctx = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
         ctx.add_column(style="bold cyan", width=18)
@@ -420,7 +512,7 @@ Confidence should reflect how complete the picture is:
                 dep_summary.append(f"{icon} {dep.target_service}")
             ctx.add_row("Dependencies", "  ".join(dep_summary))
 
-        console.print(ctx)
+        # console.print(ctx)
 
 
 class StatusHandler(BaseHandler):
@@ -596,7 +688,6 @@ class ChatHandler(BaseHandler):
 
         console.print(Rule("Interactive Chat", style="bold cyan"))
 
-        # Load last RCA — support both old and new result formats
         last_result = None
         try:
             with open(".last_rca.json") as f:
@@ -604,7 +695,6 @@ class ChatHandler(BaseHandler):
         except Exception:
             pass
 
-        # Also check for last window_analyzer result saved by AnalyseHandler
         if not last_result:
             try:
                 with open(".last_analyse.json") as f:
@@ -631,6 +721,7 @@ class ChatHandler(BaseHandler):
             "No analysis available."
         )
         confidence = last_result.get("confidence", 0)
+        mode = last_result.get("mode", "kubectl")
 
         context = (
             "You are an SRE assistant helping with incident follow-up.\n"
@@ -639,8 +730,9 @@ class ChatHandler(BaseHandler):
             "reply: 'I can only help with questions about this incident or SRE topics.'\n\n"
             f"Incident summary:\n"
             f"Service: {service}\n"
+            f"Mode: {mode}\n"
             f"Confidence: {confidence}%\n"
-            f"Analysis:\n{analysis[:1000]}\n\n"
+            f"Analysis:\n{analysis[:1500]}\n\n"
             "Answer follow-up questions concisely and practically."
         )
 
@@ -664,8 +756,8 @@ class ChatHandler(BaseHandler):
         history = []
         MAX_HISTORY = 10
         console.print(
-            f"[dim]Chatting about incident: {service} "
-            f"(confidence: {confidence}%)[/dim]"
+            f"[dim]Chatting about: [bold]{service}[/bold] "
+            f"(mode: {mode}, confidence: {confidence}%)[/dim]"
         )
         console.print("[dim]Type 'exit' to leave, 'clear' to reset history[/dim]\n")
 
@@ -812,7 +904,7 @@ class CleanLogsHandler(BaseHandler):
             return "usage"
 
         log_file = _extract_log(raw) or raw
-        
+
         loader = LogLoader()
         try:
             with open(log_file, "r", errors="replace") as f:
@@ -820,8 +912,7 @@ class CleanLogsHandler(BaseHandler):
         except Exception:
             raw_lines = []
 
-        # Fulfilling 'Load the file using LogLoader' requirement (even though it auto-cleans now)
-        loader.load(log_file) 
+        loader.load(log_file)
 
         cleaner = LogCleaner()
         cleaned = cleaner.clean(raw_lines)
@@ -858,19 +949,13 @@ class HelpHandler(BaseHandler):
         rows = [
             ("[bold cyan]analyse[/bold cyan] [italic]<service>[/italic]",
              "[white]RAG-based RCA with sliding window[/white]",
-             "analyse payment-service"),
+             "analyse paymentservice"),
             ("[bold cyan]analyse[/bold cyan] [italic]<service>[/italic] [dim]--baseline[/dim]",
-             "[white]LLM-only analysis, no RAG[/white]",
-             "analyse payment-service --baseline"),
+             "[white]LLM-only kubectl analysis, no RAG[/white]",
+             "analyse paymentservice --baseline"),
             ("[bold cyan]analyse[/bold cyan] [italic]<service>[/italic] [dim]--compare[/dim]",
              "[white]Run both, save comparison report[/white]",
-             "analyse payment-service --compare"),
-            # ("[bold cyan]compare[/bold cyan]",
-            #  "[white]Baseline vs RAG analysis comparison[/white]",
-            #  "compare"),
-            # ("[bold cyan]watch[/bold cyan] [italic]<service>[/italic]",
-            #  "[white]Live log tailing + instant RCA[/white]",
-            #  "watch payment-service"),
+             "analyse paymentservice --compare"),
             ("[bold cyan]chat[/bold cyan]",
              "[white]Interactive follow-up on last RCA[/white]",
              "chat"),
@@ -880,9 +965,6 @@ class HelpHandler(BaseHandler):
             ("[bold cyan]explain[/bold cyan] [italic]<concept>[/italic]",
              "[white]SRE/Kubernetes concept explanations[/white]",
              "explain what is OOMKilled"),
-            # ("[bold cyan]clean-logs[/bold cyan] [italic]<log_file>[/italic]",
-            #  "[white]Filter noise from log file[/white]",
-            #  "clean-logs logs/test.log"),
             ("[bold cyan]help[/bold cyan]",
              "[white]Display this command reference[/white]",
              "help"),
@@ -947,7 +1029,6 @@ def resolve(user_input: str) -> Optional[tuple[BaseHandler, list[str]]]:
     if first in REGISTRY:
         return REGISTRY[first], words[1:]
 
-    # Tier 2: fuzzy command match
     fuzzy = _fuzzy_match_command(first)
     if fuzzy:
         confirmed = _prompt_did_you_mean(first, fuzzy)
@@ -1018,7 +1099,7 @@ def print_out_of_scope_message(raw_query: str):
     ]:
         msg.append(f"{item}\n", style="cyan")
     msg.append(f"\nYour query: \"{raw_query}\"\n", style="dim")
-    msg.append("Try: 'check payment-service' or 'what is OOMKilled'", style="dim yellow")
+    msg.append("Try: 'analyse paymentservice' or 'explain OOMKilled'", style="dim yellow")
     console.print(Panel(msg, title="[bold yellow]Out of scope[/bold yellow]", border_style="yellow", expand=False))
 
 

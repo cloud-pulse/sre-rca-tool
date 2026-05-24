@@ -5,11 +5,11 @@ All kubectl interactions go through this module — no scattered subprocess call
 """
 
 import subprocess
-import logging
 import re
 from typing import Optional
+from core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger("Kubectl client")
 
 
 # ─────────────────────────────────────────────
@@ -72,7 +72,7 @@ def get_pods(namespace: str, service_name: str) -> list[dict]:
         if matched:
             return _parse_pod_lines("\n".join(matched))
 
-    logger.warning(f"No pods found for service '{service_name}' in namespace '{namespace}'")
+    log.warn(f"No pods found for service '{service_name}' in namespace '{namespace}'")
     return []
 
 
@@ -289,3 +289,71 @@ def classify_pod_status(pod: dict) -> str:
     if status == "Running":
         return "healthy"
     return "warning"
+
+
+# Additional helpers appended by patch
+def get_service_endpoints(service_name: str, namespace: str) -> str:
+    """
+    Fetch endpoints for a Kubernetes service.
+    Shows whether the service has healthy backing pods.
+    Returns formatted string for evidence.
+    """
+    ok, out = _run([
+        "kubectl", "get", "endpoints", service_name,
+        "-n", namespace,
+    ])
+    if ok and out:
+        return out
+    return f"[No endpoints found for service {service_name}]"
+
+
+def get_virtual_service(service_name: str, namespace: str) -> str:
+    """
+    Fetch Istio VirtualService for a service.
+    Gracefully returns empty string if Istio is not installed.
+    """
+    ok, out = _run([
+        "kubectl", "get", "virtualservice", service_name,
+        "-n", namespace,
+        "-o", "yaml",
+    ])
+    if ok and out:
+        return out
+    # Not an error — Istio may not be installed
+    return ""
+
+
+def get_pod_node(pod_name: str, namespace: str) -> str:
+    """
+    Returns the node name that a pod is scheduled on.
+    """
+    ok, out = _run([
+        "kubectl", "get", "pod", pod_name,
+        "-n", namespace,
+        "-o", "jsonpath={.spec.nodeName}",
+    ])
+    if ok and out:
+        return out.strip()
+    return ""
+
+
+def get_node_describe(node_name: str) -> str:
+    """
+    Returns kubectl describe node output.
+    Useful for detecting taints, conditions, pressure, allocatable resources.
+    Truncated to last 3000 chars to keep evidence concise.
+    """
+    ok, out = _run([
+        "kubectl", "describe", "node", node_name,
+    ], timeout=30)
+    if ok and out:
+        # Focus on Conditions and Allocated resources sections
+        sections = []
+        if "Conditions:" in out:
+            start = out.index("Conditions:")
+            sections.append(out[start:start + 1500])
+        if "Allocated resources:" in out:
+            start = out.index("Allocated resources:")
+            sections.append(out[start:start + 800])
+        return "\n\n".join(sections) if sections else out[-3000:]
+    return f"[Could not describe node {node_name}]"

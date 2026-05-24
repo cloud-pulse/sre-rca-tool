@@ -1,19 +1,16 @@
 """
 core/kubectl_rca_investigator.py
 
-Sequential early-exit RCA pipeline for AI-SRE kubectl mode.
+Sequential RCA pipeline for AI-SRE kubectl mode.
 
-Pipeline order (per service, then per dependency):
-  1. Pod status check
-  2. Pod events
-  3. Pod + container logs
-  4. Node / cluster resource pressure
-  5. Dependency health check (recurse steps 1-3)
-
-Stops and returns as soon as confidence >= CONFIDENCE_THRESHOLD.
+Design:
+- Collect ALL evidence first
+- No early exit
+- Silent investigator (minimal logs only)
+- Final rendering handled elsewhere
+- Returns RCAReport object
 """
 
-import logging
 import re
 from dataclasses import dataclass, field
 from typing import Optional
@@ -28,38 +25,206 @@ from core.kubectl_client import (
     get_containers_for_pod,
     classify_pod_status,
     CRITICAL_STATUSES,
+    get_service_endpoints,
+    get_virtual_service,
+    get_pod_node,
+    get_node_describe,
 )
+from core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+log = get_logger("incident_recorder")
 
-CONFIDENCE_THRESHOLD = 80   # exit early at or above this confidence
-MAX_DEPENDENCY_DEPTH = 2    # how deep to recurse into dependencies
+MAX_DEPENDENCY_DEPTH = 1
 
 
 # ─────────────────────────────────────────────
-# Data structures
+# Pattern Detection
+# ─────────────────────────────────────────────
+
+PATTERNS = [
+    (
+        r"OOMKilled|out of memory|memory limit exceeded|Cannot allocate memory",
+        "OOM / Memory limit exceeded",
+        95,
+        [
+            "Increase memory limits in deployment spec",
+            "Profile application for memory leaks",
+            "Check for unbounded caches or large payload processing",
+        ],
+    ),
+
+    (
+        r"CrashLoopBackOff",
+        "CrashLoopBackOff — repeated container crash",
+        90,
+        [
+            "Check application startup logs for crash reason",
+            "Validate liveness probe configuration",
+            "Ensure required env vars and config maps are present",
+        ],
+    ),
+
+    (
+        r"ImagePullBackOff|ErrImagePull|image.*not found|manifest unknown",
+        "Image pull failure",
+        92,
+        [
+            "Verify image name and tag in deployment spec",
+            "Check image registry credentials",
+            "Confirm image exists in registry",
+        ],
+    ),
+
+    (
+        r"CreateContainerConfigError|CreateContainerError|secret.*not found|configmap.*not found",
+        "Missing secret or ConfigMap / container config error",
+        88,
+        [
+            "Verify secrets/configmaps exist",
+            "Check env vars",
+            "Validate deployment spec",
+        ],
+    ),
+
+    (
+        r"Liveness probe failed|Readiness probe failed|Startup probe failed",
+        "Probe failure",
+        85,
+        [
+            "Review probe endpoint",
+            "Increase timeout thresholds",
+            "Check slow startup conditions",
+        ],
+    ),
+
+    (
+        r"connection refused|ECONNREFUSED",
+        "Dependency connection refused",
+        87,
+        [
+            "Verify dependency service",
+            "Check ports",
+            "Inspect dependency logs",
+        ],
+    ),
+
+    (
+        r"timeout|context deadline exceeded|i/o timeout",
+        "Request timeout / latency spike",
+        75,
+        [
+            "Check dependency latency",
+            "Inspect network policies",
+            "Increase timeout settings",
+        ],
+    ),
+
+    (
+        r"panic:|fatal error|SIGSEGV|SIGABRT",
+        "Application panic / fatal crash",
+        92,
+        [
+            "Review stack trace",
+            "Inspect recent code changes",
+            "Check for nil pointer dereference",
+        ],
+    ),
+
+    (
+        r"Evicted|DiskPressure|MemoryPressure|PIDPressure",
+        "Node resource pressure / pod eviction",
+        88,
+        [
+            "Check node resource usage",
+            "Scale cluster",
+            "Review resource requests",
+        ],
+    ),
+
+    (
+        r"Pending",
+        "Pod stuck in Pending",
+        80,
+        [
+            "Check node resources",
+            "Verify scheduling constraints",
+            "Review taints/tolerations",
+        ],
+    ),
+]
+
+
+def detect_patterns(text: str) -> Optional[tuple[str, int, list[str]]]:
+
+    if not text:
+        return None
+
+    best = None
+    best_conf = 0
+
+    for pattern, cause, conf, fixes in PATTERNS:
+
+        if re.search(pattern, text, re.IGNORECASE):
+
+            if conf > best_conf:
+                best = (cause, conf, fixes)
+                best_conf = conf
+
+    return best
+
+
+# ─────────────────────────────────────────────
+# Data Models
 # ─────────────────────────────────────────────
 
 @dataclass
 class RCAFinding:
+
     root_cause: str = "Unknown"
-    confidence: int = 0                       # 0–100
+    confidence: int = 0
+
     affected_service: str = ""
     affected_pod: str = ""
-    evidence_stage: str = ""                  # which pipeline stage found it
-    raw_evidence: str = ""                    # key log/event snippet
+
+    evidence_stage: str = ""
+    raw_evidence: str = ""
+
     suggested_fixes: list[str] = field(default_factory=list)
     dependency_chain: list[str] = field(default_factory=list)
+
+    def update_if_better(
+        self,
+        cause: str,
+        conf: int,
+        fixes: list[str],
+        pod: str,
+        stage: str,
+        evidence: str,
+    ) -> None:
+
+        if conf > self.confidence:
+
+            self.root_cause = cause
+            self.confidence = conf
+            self.affected_pod = pod
+            self.evidence_stage = stage
+            self.raw_evidence = evidence
+            self.suggested_fixes = fixes
 
 
 @dataclass
 class RCAReport:
+
     target_service: str
-    finding: RCAFinding
-    all_evidence: dict = field(default_factory=dict)  # stage -> evidence text
-    dependency_reports: list["RCAReport"] = field(default_factory=list)
+
+    finding: RCAFinding = field(default_factory=RCAFinding)
+
+    all_evidence: dict = field(default_factory=dict)
+
+    dependency_reports: list = field(default_factory=list)
 
     def to_dict(self) -> dict:
+
         return {
             "target_service": self.target_service,
             "root_cause": self.finding.root_cause,
@@ -69,130 +234,26 @@ class RCAReport:
             "evidence_stage": self.finding.evidence_stage,
             "suggested_fixes": self.finding.suggested_fixes,
             "dependency_chain": self.finding.dependency_chain,
-            "raw_evidence_snippet": self.finding.raw_evidence[:500] if self.finding.raw_evidence else "",
+            "raw_evidence_snippet": (
+                self.finding.raw_evidence[:500]
+                if self.finding.raw_evidence
+                else ""
+            ),
             "all_evidence": self.all_evidence,
-            "dependency_reports": [r.to_dict() for r in self.dependency_reports],
+            "dependency_reports": [
+                r.to_dict() for r in self.dependency_reports
+            ],
         }
 
 
 # ─────────────────────────────────────────────
-# Pattern detection (extends PatternDetector from sre_investigator)
-# ─────────────────────────────────────────────
-
-PATTERNS = [
-    # (regex, root_cause_label, confidence, suggested_fixes)
-    (r"OOMKilled|out of memory|memory limit exceeded|Cannot allocate memory",
-     "OOM / Memory limit exceeded", 95,
-     ["Increase memory limits in deployment spec",
-      "Profile application for memory leaks",
-      "Check for unbounded caches or large payload processing"]),
-
-    (r"CrashLoopBackOff",
-     "CrashLoopBackOff — repeated container crash", 90,
-     ["Check application startup logs for crash reason",
-      "Validate liveness probe configuration",
-      "Ensure required env vars and config maps are present"]),
-
-    (r"ImagePullBackOff|ErrImagePull|image.*not found|manifest unknown",
-     "Image pull failure", 92,
-     ["Verify image name and tag in deployment spec",
-      "Check image registry credentials (imagePullSecrets)",
-      "Confirm image exists in registry"]),
-
-    (r"CreateContainerConfigError|secret.*not found|configmap.*not found|env.*not found",
-     "Missing secret or ConfigMap", 88,
-     ["Verify all referenced secrets/configmaps exist in namespace",
-      "Check env var injection in deployment spec"]),
-
-    (r"Liveness probe failed|Readiness probe failed|probe.*timeout|health check.*fail",
-     "Probe failure (liveness/readiness)", 85,
-     ["Review probe endpoint availability",
-      "Increase probe timeout/period thresholds",
-      "Check if application is starting up too slowly (initialDelaySeconds)"]),
-
-    (r"connection refused|ECONNREFUSED|dial tcp.*connection refused",
-     "Dependency connection refused", 87,
-     ["Verify the dependency service is running and its pods are healthy",
-      "Check service name and port in the calling service config",
-      "Inspect dependency pod logs"]),
-
-    (r"no such host|DNS.*NXDOMAIN|could not resolve|name resolution fail",
-     "DNS resolution failure", 85,
-     ["Verify service name is correct and matches Kubernetes service object",
-      "Check CoreDNS pod health in kube-system namespace",
-      "Confirm the dependency service exists in the correct namespace"]),
-
-    (r"timeout|context deadline exceeded|i/o timeout|request timeout",
-     "Request timeout / latency spike", 75,
-     ["Check resource pressure on the dependency service",
-      "Look for network policies blocking traffic",
-      "Increase timeout thresholds if dependency is under heavy load"]),
-
-    (r"panic:|fatal error|SIGSEGV|SIGABRT|goroutine.*\[running\]",
-     "Application panic / fatal crash", 92,
-     ["Review stack trace in logs",
-      "Check for nil pointer dereference or uncaught exception",
-      "Review recent code changes"]),
-
-    (r"Evicted|eviction|node.*pressure|DiskPressure|MemoryPressure|PIDPressure",
-     "Node resource pressure / pod eviction", 88,
-     ["Check node resource usage (kubectl top nodes)",
-      "Scale up cluster or reduce pod resource requests",
-      "Review pod priority and eviction policies"]),
-
-    (r"Pending",
-     "Pod stuck in Pending — scheduling failure", 80,
-     ["Check node resources (kubectl describe node)",
-      "Verify resource requests fit on available nodes",
-      "Check for taints/tolerations or affinity rules blocking scheduling"]),
-]
-
-
-def detect_patterns(text: str) -> Optional[tuple[str, int, list[str]]]:
-    """
-    Scan text against all patterns.
-    Returns (root_cause, confidence, fixes) for highest-confidence match, or None.
-    """
-    best = None
-    best_conf = 0
-    for pattern, cause, conf, fixes in PATTERNS:
-        if re.search(pattern, text, re.IGNORECASE):
-            if conf > best_conf:
-                best = (cause, conf, fixes)
-                best_conf = conf
-    return best
-
-
-# ─────────────────────────────────────────────
-# Evidence helpers
-# ─────────────────────────────────────────────
-
-def _pods_status_evidence(pods: list[dict]) -> str:
-    lines = []
-    for p in pods:
-        lines.append(
-            f"  {p['name']}: status={p['status']} ready={p['ready']} restarts={p['restarts']} age={p['age']}"
-        )
-    return "\n".join(lines) if lines else "  (no pods found)"
-
-
-def _resource_pressure_summary(nodes: list[dict], cluster_pods: list[dict]) -> str:
-    node_lines = [f"  {n.get('name','?')}: CPU={n.get('cpu','?')} ({n.get('cpu_pct','?')}) MEM={n.get('memory','?')} ({n.get('memory_pct','?')})" for n in nodes if "error" not in n]
-    pod_lines = [f"  {p.get('pod','?')}: CPU={p.get('cpu','?')} MEM={p.get('memory','?')}" for p in cluster_pods[:10] if "error" not in p]
-    return "Nodes:\n" + ("\n".join(node_lines) or "  (unavailable)") + \
-           "\nTop Pods:\n" + ("\n".join(pod_lines) or "  (unavailable)")
-
-
-# ─────────────────────────────────────────────
-# Core investigator
+# Investigator
 # ─────────────────────────────────────────────
 
 class KubectlRCAInvestigator:
+
     def __init__(self, service_graph=None):
-        """
-        service_graph: instance of core.service_graph.ServiceGraph
-        Pass None to skip dependency analysis.
-        """
+
         self.service_graph = service_graph
 
     def investigate(
@@ -201,212 +262,346 @@ class KubectlRCAInvestigator:
         namespace: str = "default",
         depth: int = 0,
     ) -> RCAReport:
-        """
-        Run the full sequential RCA pipeline for a service.
-        Returns RCAReport.
-        """
-        logger.info(f"[RCA] Investigating '{service_name}' in namespace '{namespace}' (depth={depth})")
-        finding = RCAFinding(affected_service=service_name)
-        all_evidence = {}
 
-        # ── 1. Pod status check ──────────────────────────────
+        log.info("[RCA] Investigating '{service_name}' in namespace '{namespace}'")
+
+        finding = RCAFinding(
+            affected_service=service_name
+        )
+
+        evidence = {}
+
+        # ─────────────────────────────
+        # Stage 1 — Pod Status
+        # ─────────────────────────────
+
+        log.info("[RCA] Stage 1 — Pod Status")
+
         pods = get_pods(namespace, service_name)
-        status_evidence = _pods_status_evidence(pods)
-        all_evidence["pod_status"] = status_evidence
-        logger.info(f"[RCA] Stage 1 — Pod status:\n{status_evidence}")
+
+        evidence["pod_status"] = str(pods)
+
+        pod_name = pods[0]["name"] if pods else None
 
         for pod in pods:
+
             status = pod.get("status", "")
             restarts = pod.get("restarts", 0)
 
-            # Direct critical status match
             if status in CRITICAL_STATUSES:
+
                 match = detect_patterns(status)
+
                 if match:
+
                     cause, conf, fixes = match
-                    if conf >= CONFIDENCE_THRESHOLD:
-                        finding.root_cause = cause
-                        finding.confidence = conf
-                        finding.affected_pod = pod["name"]
-                        finding.evidence_stage = "pod_status"
-                        finding.raw_evidence = f"Pod {pod['name']} status: {status}, restarts: {restarts}"
-                        finding.suggested_fixes = fixes
-                        return RCAReport(service_name, finding, all_evidence)
 
-            # High restart count is a strong signal even without matching status
-            if restarts >= 5 and status not in ("Running",):
-                finding.root_cause = f"High restart count ({restarts}) — likely CrashLoopBackOff or startup failure"
-                finding.confidence = 75
-                finding.affected_pod = pod["name"]
-                finding.evidence_stage = "pod_status"
-                finding.raw_evidence = f"Pod {pod['name']} restarts={restarts} status={status}"
-                finding.suggested_fixes = [
-                    "Check pod logs for crash reason",
-                    "Validate liveness probe and startup configuration",
-                ]
-                # Don't exit yet — try to get higher confidence from events/logs
+                    finding.update_if_better(
+                        cause,
+                        conf,
+                        fixes,
+                        pod["name"],
+                        "pod_status",
+                        status,
+                    )
 
-        # ── 2. Pod events ─────────────────────────────────────
-        if pods:
-            pod_name = pods[0]["name"]  # focus on first (usually most relevant) pod
-            events = get_pod_events(pod_name, namespace)
-            all_evidence["pod_events"] = events
-            logger.info(f"[RCA] Stage 2 — Events for {pod_name}")
+            if restarts >= 5 and status != "Running":
+
+                finding.update_if_better(
+                    f"High restart count ({restarts})",
+                    75,
+                    [
+                        "Check startup logs",
+                        "Validate probes",
+                        "Review recent deployment",
+                    ],
+                    pod["name"],
+                    "pod_status",
+                    status,
+                )
+
+        # ─────────────────────────────
+        # Stage 2 — Pod Events
+        # ─────────────────────────────
+
+        log.info("[RCA] Stage 2 — Pod Events")
+
+        if pod_name:
+
+            events = get_pod_events(
+                pod_name,
+                namespace,
+            )
+
+            evidence["pod_events"] = events
 
             match = detect_patterns(events)
-            if match:
-                cause, conf, fixes = match
-                if conf >= CONFIDENCE_THRESHOLD:
-                    finding.root_cause = cause
-                    finding.confidence = conf
-                    finding.affected_pod = pod_name
-                    finding.evidence_stage = "pod_events"
-                    finding.raw_evidence = events[:600]
-                    finding.suggested_fixes = fixes
-                    return RCAReport(service_name, finding, all_evidence)
-                elif conf > finding.confidence:
-                    # Keep as best candidate so far
-                    finding.root_cause = cause
-                    finding.confidence = conf
-                    finding.affected_pod = pod_name
-                    finding.evidence_stage = "pod_events"
-                    finding.raw_evidence = events[:600]
-                    finding.suggested_fixes = fixes
 
-        # ── 3. Pod + container logs ───────────────────────────
-        if pods:
-            pod_name = pods[0]["name"]
-            containers = get_containers_for_pod(pod_name, namespace)
-            log_map = get_all_container_logs(pod_name, namespace, containers, tail=200)
-            combined_logs = "\n".join(log_map.values())
-            all_evidence["pod_logs"] = combined_logs
-            logger.info(f"[RCA] Stage 3 — Logs for {pod_name} containers={containers}")
+            if match:
+
+                cause, conf, fixes = match
+
+                finding.update_if_better(
+                    cause,
+                    conf,
+                    fixes,
+                    pod_name,
+                    "pod_events",
+                    events[:500],
+                )
+
+        else:
+
+            evidence["pod_events"] = "(no pods)"
+
+        # ─────────────────────────────
+        # Stage 3 — Pod Logs
+        # ─────────────────────────────
+
+        log.info("[RCA] Stage 3 — Pod Logs")
+
+        if pod_name:
+
+            containers = get_containers_for_pod(
+                pod_name,
+                namespace,
+            )
+
+            log_map = get_all_container_logs(
+                pod_name,
+                namespace,
+                containers,
+                tail=200,
+            )
+
+            combined_logs = "\n".join(
+                f"[Container: {c}]\n{log}"
+                for c, log in log_map.items()
+            )
+
+            evidence["pod_logs"] = combined_logs
 
             match = detect_patterns(combined_logs)
+
             if match:
+
                 cause, conf, fixes = match
-                if conf >= CONFIDENCE_THRESHOLD:
-                    finding.root_cause = cause
-                    finding.confidence = conf
-                    finding.affected_pod = pod_name
-                    finding.evidence_stage = "pod_logs"
-                    # Surface the most relevant 3 lines
-                    snippet = self._extract_relevant_lines(combined_logs, cause)
-                    finding.raw_evidence = snippet
-                    finding.suggested_fixes = fixes
-                    return RCAReport(service_name, finding, all_evidence)
-                elif conf > finding.confidence:
-                    finding.root_cause = cause
-                    finding.confidence = conf
-                    finding.affected_pod = pod_name
-                    finding.evidence_stage = "pod_logs"
-                    finding.suggested_fixes = fixes
 
-        # ── 4. Node / cluster resource pressure ──────────────
+                finding.update_if_better(
+                    cause,
+                    conf,
+                    fixes,
+                    pod_name,
+                    "pod_logs",
+                    combined_logs[:500],
+                )
+
+        else:
+
+            evidence["pod_logs"] = "(no pods)"
+
+        # ─────────────────────────────
+        # Stage 4 — Cluster Resources
+        # ─────────────────────────────
+
+        log.info("[RCA] Stage 4 — Cluster Resources")
+
         nodes = get_node_resources()
-        cluster_pods = get_cluster_resource_pressure(namespace)
-        resource_summary = _resource_pressure_summary(nodes, cluster_pods)
-        all_evidence["resource_pressure"] = resource_summary
-        logger.info(f"[RCA] Stage 4 — Resource pressure check")
 
-        match = detect_patterns(resource_summary)
-        if match:
-            cause, conf, fixes = match
-            if conf >= CONFIDENCE_THRESHOLD:
-                finding.root_cause = cause
-                finding.confidence = conf
-                finding.evidence_stage = "resource_pressure"
-                finding.raw_evidence = resource_summary[:600]
-                finding.suggested_fixes = fixes
-                return RCAReport(service_name, finding, all_evidence)
-            elif conf > finding.confidence:
-                finding.root_cause = cause
-                finding.confidence = conf
-                finding.evidence_stage = "resource_pressure"
-                finding.suggested_fixes = fixes
+        cluster_pods = get_cluster_resource_pressure(
+            namespace
+        )
 
-        # ── 5. Dependency health check ────────────────────────
-        dep_reports = []
-        if depth < MAX_DEPENDENCY_DEPTH and self.service_graph:
-            deps = self._get_dependencies(service_name)
-            logger.info(f"[RCA] Stage 5 — Checking {len(deps)} dependencies: {deps}")
+        evidence["resource_pressure"] = {
+            "nodes": nodes,
+            "pods": cluster_pods,
+        }
 
-            for dep in deps:
-                dep_namespace = self._get_dep_namespace(dep, namespace)
-                dep_report = self.investigate(dep, dep_namespace, depth=depth + 1)
-                dep_reports.append(dep_report)
+        # ─────────────────────────────
+        # Stage 4b — Node Describe
+        # ─────────────────────────────
 
-                dep_finding = dep_report.finding
-                if dep_finding.confidence >= CONFIDENCE_THRESHOLD:
-                    # Dependency is the likely root cause
-                    root_cause = (
-                        f"Dependency '{dep}' failure: {dep_finding.root_cause}"
+        log.info("[RCA] Stage 4b — Node Describe")
+
+        if pod_name:
+
+            node_name = get_pod_node(
+                pod_name,
+                namespace,
+            )
+
+            if node_name:
+
+                node_desc = get_node_describe(node_name)
+
+                evidence["node_describe"] = node_desc
+
+                evidence["pod_node"] = node_name
+
+                match = detect_patterns(node_desc)
+
+                if match:
+
+                    cause, conf, fixes = match
+
+                    finding.update_if_better(
+                        cause,
+                        conf,
+                        fixes,
+                        pod_name,
+                        "node_describe",
+                        node_desc[:500],
                     )
-                    finding.root_cause = root_cause
-                    finding.confidence = dep_finding.confidence
-                    finding.affected_service = dep
-                    finding.affected_pod = dep_finding.affected_pod
-                    finding.evidence_stage = f"dependency:{dep}"
-                    finding.raw_evidence = dep_finding.raw_evidence
-                    finding.suggested_fixes = dep_finding.suggested_fixes
-                    finding.dependency_chain = [service_name, dep] + dep_finding.dependency_chain
-                    return RCAReport(service_name, finding, all_evidence, dep_reports)
 
-        # ── Final: return best candidate found so far ─────────
-        if not finding.root_cause or finding.root_cause == "Unknown":
-            finding.root_cause = "No clear root cause identified — service may be healthy or issue is intermittent"
+        # ─────────────────────────────
+        # Stage 5 — Service Endpoints
+        # ─────────────────────────────
+
+        log.info("[RCA] Stage 5 — Service Endpoints")
+
+        endpoints = get_service_endpoints(
+            service_name,
+            namespace,
+        )
+
+        evidence["service_endpoints"] = endpoints
+
+        if endpoints and (
+            "<none>" in endpoints.lower()
+            or "notfound" in endpoints.lower()
+        ):
+
+            finding.update_if_better(
+                "Service has no healthy endpoints",
+                82,
+                [
+                    "Check readiness probes",
+                    "Verify pod labels",
+                    "Inspect pod failures",
+                ],
+                pod_name or "",
+                "service_endpoints",
+                endpoints[:500],
+            )
+
+        # ─────────────────────────────
+        # Stage 6 — VirtualService
+        # ─────────────────────────────
+
+        log.info("[RCA] Stage 6 — VirtualService")
+
+        vs = get_virtual_service(
+            service_name,
+            namespace,
+        )
+
+        if vs:
+            evidence["virtual_service"] = vs
+
+        # ─────────────────────────────
+        # Finalise
+        # ─────────────────────────────
+
+        if finding.root_cause == "Unknown":
+
+            finding.root_cause = (
+                "No issue identified — service appears healthy"
+            )
+
             finding.confidence = 0
+
             finding.suggested_fixes = [
-                "Monitor service over time for intermittent failures",
-                "Enable verbose/debug logging",
-                "Check recent deployments or config changes",
+                "Continue monitoring",
+                "Review resource allocation",
+                "Validate probe configurations",
             ]
 
-        return RCAReport(service_name, finding, all_evidence, dep_reports)
-
-    def _get_dependencies(self, service_name: str) -> list[str]:
-        if not self.service_graph:
-            return []
-        try:
-            config = self.service_graph.services.get(service_name, {})
-            return config.get("depends_on", [])
-        except Exception:
-            return []
-
-    def _get_dep_namespace(self, dep: str, fallback: str) -> str:
-        if not self.service_graph:
-            return fallback
-        try:
-            return self.service_graph.get_namespace(dep) or fallback
-        except Exception:
-            return fallback
-
-    @staticmethod
-    def _extract_relevant_lines(log_text: str, cause: str) -> str:
-        """Return up to 5 most relevant lines from the log for the given cause."""
-        keywords = cause.lower().split()
-        scored = []
-        for line in log_text.splitlines():
-            score = sum(1 for kw in keywords if kw in line.lower())
-            if score > 0:
-                scored.append((score, line))
-        scored.sort(key=lambda x: -x[0])
-        return "\n".join(line for _, line in scored[:5])
+        return RCAReport(
+            target_service=service_name,
+            finding=finding,
+            all_evidence=evidence,
+        )
 
 
 # ─────────────────────────────────────────────
-# Convenience entry point
+# Evidence Collector
+# ─────────────────────────────────────────────
+
+def collect_all_evidence(report: RCAReport) -> str:
+    """
+    Flatten RCAReport evidence into readable text for LLM prompts.
+    """
+
+    sections = []
+
+    ev = report.all_evidence
+
+    def _add(
+        label: str,
+        content,
+        limit: int = 2000,
+    ):
+
+        if not content:
+            return
+
+        if isinstance(content, dict):
+            content = str(content)
+
+        if isinstance(content, list):
+            content = "\n".join(str(x) for x in content)
+
+        text = str(content).strip()
+
+        if not text:
+            return
+
+        sections.append(
+            f"=== {label} ===\n{text[:limit]}"
+        )
+
+    _add("POD STATUS", ev.get("pod_status"))
+    _add("POD EVENTS", ev.get("pod_events"))
+    _add("POD LOGS", ev.get("pod_logs"), 3000)
+    _add("RESOURCE PRESSURE", ev.get("resource_pressure"))
+    _add("NODE DESCRIBE", ev.get("node_describe"))
+    _add("SERVICE ENDPOINTS", ev.get("service_endpoints"))
+
+    if ev.get("virtual_service"):
+        _add("VIRTUAL SERVICE", ev.get("virtual_service"))
+
+    for dep in report.dependency_reports:
+
+        dep_ev = dep.all_evidence
+
+        _add(
+            f"DEPENDENCY {dep.target_service}",
+            dep_ev,
+            1500,
+        )
+
+    return (
+        "\n\n".join(sections)
+        if sections
+        else "No evidence collected."
+    )
+
+
+# ─────────────────────────────────────────────
+# Entry Point
 # ─────────────────────────────────────────────
 
 def run_kubectl_rca(
     service_name: str,
     namespace: str = "default",
     service_graph=None,
-) -> dict:
-    """
-    Top-level function. Wire this into main.py.
-    Returns a plain dict matching the existing RCA output schema.
-    """
-    investigator = KubectlRCAInvestigator(service_graph=service_graph)
-    report = investigator.investigate(service_name, namespace)
-    return report.to_dict()
+) -> RCAReport:
+
+    investigator = KubectlRCAInvestigator(
+        service_graph=service_graph
+    )
+
+    return investigator.investigate(
+        service_name,
+        namespace,
+    )

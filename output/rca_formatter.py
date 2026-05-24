@@ -210,7 +210,7 @@ class RCAFormatter:
             content.append(f"{confidence}%\n", style="bold red")
 
         # CONFIDENCE REASON
-        content.append("REASON: ", style="bold cyan")
+        # content.append("REASON: ", style="bold cyan")
         content.append(
             f"{result.get('confidence_reason', 'N/A')}\n\n", style="dim white"
         )
