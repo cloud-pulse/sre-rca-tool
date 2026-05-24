@@ -578,6 +578,114 @@ def status():
 
 
 @cli.command()
+@click.option(
+    "--service",
+    "-S",
+    required=True,
+    type=str,
+    help="Deployment/service name to investigate via kubectl",
+)
+@click.option(
+    "--namespace",
+    "-n",
+    default=None,
+    help="Kubernetes namespace (overrides SOURCE_NAMESPACE in .env)",
+)
+@click.option(
+    "--output",
+    "-o",
+    type=click.Choice(["rich", "json", "plain"]),
+    default="rich",
+    show_default=True,
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+)
+def kubectl_analyze(service, namespace, output, verbose):
+    """Run kubectl RCA for a specific service (bypasses log+LLM pipeline)."""
+    from flags import USE_KUBERNETES, K8S_NAMESPACE
+
+    if not USE_KUBERNETES:
+        console.print(
+            "[bold yellow]Warning:[/bold yellow] SOURCE_KUBERNETES=false in .env. kubectl mode may not be desired. Proceeding anyway..."
+        )
+
+    from core.kubectl_rca_investigator import run_kubectl_rca
+    from core.service_graph import ServiceGraph, resolve_service
+
+    active_namespace = namespace or K8S_NAMESPACE
+
+    sg = ServiceGraph("services.yaml")
+    resolved = resolve_service(service, sg, active_namespace)
+
+    if verbose:
+        console.print(
+            f"[dim]Resolved service '{service}' -> '{resolved}' (namespace={active_namespace})[/dim]"
+        )
+
+    result = run_kubectl_rca(resolved, active_namespace, service_graph=sg)
+
+    if output == "json":
+        payload = dict(result)
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    # plain/rich: reuse existing output schema
+    root = result.get("root_cause", "N/A")
+    conf = result.get("confidence", 0)
+    affected_service = result.get("affected_service", resolved)
+    affected_pod = result.get("affected_pod", "")
+    fixes = result.get("suggested_fixes", [])
+
+    if output == "plain":
+        console.print("\n" + "=" * 60)
+        console.print("KUBECTL RCA RESULT")
+        console.print("=" * 60)
+        console.print(f"Service        : {affected_service}")
+        console.print(f"Pod            : {affected_pod}")
+        console.print(f"Root cause     : {root}")
+        console.print(f"Confidence      : {conf}%")
+        console.print("Suggested fixes:")
+        for fix in fixes:
+            console.print(f"  - {fix}")
+        console.print("=" * 60)
+        return
+
+    # rich output
+    from rich.table import Table as _Table
+    from rich.panel import Panel as _Panel
+    from rich import box as _box
+
+    table = _Table(title="kubectl RCA", box=_box.ROUNDED)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+    table.add_row("Service", str(affected_service))
+    table.add_row("Pod", str(affected_pod))
+    table.add_row("Root cause", str(root))
+    table.add_row("Confidence", f"{conf}%")
+
+    console.print(_Panel(table, title=f"[bold cyan]Service:[/bold cyan] {resolved}"))
+
+    if fixes:
+        console.print("\n[bold]Suggested fixes[/bold]")
+        for fix in fixes:
+            console.print(f"  • {fix}")
+
+    if result.get("dependency_chain"):
+        console.print(
+            "\n[bold]Dependency chain[/bold] "
+            + " → ".join(result["dependency_chain"]) 
+        )
+
+    if result.get("raw_evidence_snippet"):
+        console.print("\n[bold]Key evidence[/bold]")
+        console.print(str(result["raw_evidence_snippet"]))
+
+
+@cli.command()
 @click.argument("log_file", type=click.Path(exists=True))
 @click.option(
     "--interval", "-i", default=2, show_default=True, help="Poll interval in seconds"

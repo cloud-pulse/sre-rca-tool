@@ -66,3 +66,4 @@ This motivates the need for a unified framework that combines:
 
 This chapter surveyed foundational work in log anomaly detection, microservice failure diagnosis, RAG, and AIOps. The surveyed literature supports three core design choices implemented in this project: (i) pre-LLM filtering/detection to extract high-precision evidence, (ii) structured diagnosis guided by microservice dependency graphs, and (iii) retrieval grounding using historical incident evidence. Finally, the chapter identified the end-to-end evidence integration gap that our AI-assisted SRE RCA framework addresses.
 
+`

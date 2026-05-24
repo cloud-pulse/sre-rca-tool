@@ -55,7 +55,7 @@ class LogLoader:
         _original = extracted_lines
         extracted_lines = _cleaner.clean(extracted_lines)
         stats = _cleaner.get_stats(_original, extracted_lines)
-        log.info(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
+        log.debug(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
 
         log.step(f"Loaded {len(extracted_lines)} lines from {filepath}")
         return extracted_lines
@@ -223,7 +223,7 @@ class LogLoader:
         _original = combined
         combined = _cleaner.clean(combined)
         stats = _cleaner.get_stats(_original, combined)
-        log.info(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
+        log.debug(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
 
         log.step(
             f"Fetched {len(combined)} log lines from {len(pod_names)} pods in {namespace}"
@@ -275,7 +275,7 @@ class LogLoader:
         _original = filtered
         filtered = _cleaner.clean(filtered)
         stats = _cleaner.get_stats(_original, filtered)
-        log.info(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
+        log.debug(f"[dim]Cleaned: {stats['removed_count']} lines removed ({stats['removal_percent']}%)[/dim]")
 
         return filtered
 

@@ -36,6 +36,29 @@ class ServiceGraph:
         self.services = {}
         self._load()
 
+    def add_discovered_service(self, service_name: str, namespace: str) -> None:
+        """Add a newly discovered deployment to services.yaml with safe defaults."""
+        if service_name in self.services:
+            return
+
+        new_entry = {
+            "description": f"Auto-discovered from kubectl (namespace: {namespace})",
+            "namespace": namespace,
+            "port": 80,
+            "depends_on": [],
+            "exposes_to": [],
+            "health_endpoint": "/health",
+            "containers": [{"name": service_name}],
+            "dependency_confidence": "auto_discovered",
+        }
+        self.services[service_name] = new_entry
+        self._save()
+
+        log = get_logger("service_graph")
+        log.info(
+            f"Auto-discovered service '{service_name}' added to {self.services_file}"
+        )
+
     def _load(self):
         try:
             with open(self.services_file, 'r', encoding='utf-8') as f:
@@ -318,6 +341,52 @@ class ServiceGraph:
         
         panel = Panel(content, title=f"Blast Radius: [bold red]{br['target']}[/bold red]")
         console.print(panel)
+
+def resolve_service(service_name: str, service_graph: ServiceGraph, namespace: str = "default") -> str:
+    """Resolve a kubectl deployment/service name using services.yaml and kubectl fallback."""
+    from core.kubectl_client import get_deployment_list
+
+    # Exact match
+    if service_name in service_graph.services:
+        return service_name
+
+    # Fuzzy/partial match in services.yaml
+    all_names = list(service_graph.services.keys())
+    service_l = service_name.lower()
+    fuzzy = [
+        n
+        for n in all_names
+        if service_l in n.lower() or n.lower() in service_l
+    ]
+    if fuzzy:
+        resolved = fuzzy[0]
+        print(
+            f"[ServiceDiscovery] Fuzzy matched '{service_name}' → '{resolved}' from services.yaml"
+        )
+        return resolved
+
+    # kubectl fallback
+    print(
+        f"[ServiceDiscovery] '{service_name}' not in services.yaml — scanning cluster..."
+    )
+    deployments = get_deployment_list(namespace)
+    matches = [
+        d for d in deployments if service_l in d.lower() or d.lower() in service_l
+    ]
+
+    if matches:
+        resolved = matches[0]
+        print(
+            f"[ServiceDiscovery] Found '{resolved}' in cluster. Adding to services.yaml..."
+        )
+        service_graph.add_discovered_service(resolved, namespace)
+        return resolved
+
+    print(
+        f"[ServiceDiscovery] Warning: '{service_name}' not found in services.yaml or cluster."
+    )
+    return service_name
+
 
 if __name__ == "__main__":
     print(
