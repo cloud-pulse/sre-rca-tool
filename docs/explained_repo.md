@@ -13,174 +13,214 @@
 - **Mock/real toggle**: Works without Kubernetes for demos
 
 **Architecture**: Modular Python monorepo with `core/` domain logic, `main.py`/`ai_sre.py` CLIs, Rich TUI, LLM caching, ChromaDB RAG.
+# SRE-RCA-Tool: Updated Repository Explanation (May 2026)
 
-**Tech Stack**:
-| Category | Technologies |
-|----------|--------------|
-| **Core** | Python 3.12+, Click CLI, Rich TUI |
-| **AI/ML** | Ollama (phi3:mini), SentenceTransformers (all-MiniLM-L6-v2), ChromaDB |
-| **Data** | PyYAML (services.yaml), kubectl (optional) |
-| **UI** | Rich panels/tables/rules/progress |
+## Project Overview
 
-**Entry Points**:
-- `python main.py analyze [log] [--mode rag/baseline]`: Full RCA pipeline
-- `ai-sre` (installed): Interactive shell with NL parser
-- `python main.py watch logs/test.log`: Live monitoring + auto-RCA
+SRE-RCA-Tool is an AI-assisted incident investigation framework for Kubernetes microservices. It combines:
+- rule-based pattern detection,
+- LLM analysis,
+- historical incident retrieval (RAG),
+- and service dependency/blast-radius reasoning.
+
+The current user-facing entry is `python ai_sre.py` (interactive shell). Internally, command execution is handled by `core/command_registry.py` handlers.
 
 ---
 
-## Folder Structure & File Analysis
+## What Changed vs Older Architecture
 
-### `core/` - Domain Logic (Central Engine)
-**Role**: Business logic for log processing, analysis, investigation. Highly decoupled modules orchestrated by main.py/ai_sre.py.
-
-| File | Purpose | Key Components | Dependencies | Usage |
-|------|---------|----------------|--------------|-------|
-| `__init__.py` | Empty package init | - | - | - |
-| `context_builder.py` | Formats logs/resources for LLM prompts | `ContextBuilder.build()`, `format_logs_for_prompt()` | LogProcessor, ResourceCollector | Pipeline step 4: Pre-LLM formatting |
-| `llm_analyzer.py` | Ollama LLM calls + response parsing | `LLMAnalyzer.analyze_baseline/rag()`, `_parse_response()` | LLMCache, logger | Pipeline step 5: AI analysis |
-| `llm_cache.py` | Persistent LLM response caching | `LLMCache.get/set/clear/stats()` | flags, logger | All LLM calls (TTL: 1hr default) |
-| `log_loader.py` | Loads logs from files/kubectl | `LogLoader.load_auto()`, `load_from_kubectl()` | flags (USE_KUBERNETES) | Pipeline step 1: Data ingestion |
-| `log_processor.py` | Parses logs into structured entries | `LogProcessor.process/filter/summary/get_failure_chain()` | - | Pipeline step 2: Log structuring |
-| `logger.py` | Rich-aware logging with suppressions | `SRELogger`, `get_logger()` | flags (DEBUG, SUPPRESS_LOGS) | All modules |
-| `rag_engine.py` | Historical log similarity search | `RAGEngine.retrieve()`, ChromaDB + SentenceTransformers | config (HISTORICAL_LOGS_DIR) | RAG mode: Retrieves top-3 similar incidents |
-| `resource_collector.py` | Mock/real pod metrics/status | `ResourceCollector.get_resources()` (mock/kubectl top/describe) | flags (USE_KUBERNETES) | Pipeline step 3: Resource data |
-| `service_discovery.py` | Scans cluster for unknown services | `ServiceDiscovery.find_matches/prompt_for_namespace()` | kubectl get pods --all-namespaces | Interactive: Suggests namespaces |
-| `service_graph.py` | Dependency graph from services.yaml | `ServiceGraph.get_blast_radius()`, auto-discovery from logs | services.yaml | Blast radius, upstream/downstream analysis |
-| `sre_investigator.py` | Deep multi-service investigation | `SREInvestigator.investigate()` → `InvestigationReport` | All core/* | `analyze <service>`: Full evidence collection + patterns |
-
-### `output/` - Rich Terminal UI
-**Role**: Beautiful TUI dashboards, tables, spinners, panels.
-
-| File | Purpose | Key Components | Dependencies | Usage |
-|------|---------|----------------|--------------|-------|
-| `__init__.py` | Empty | - | - | - |
-| `rca_formatter.py` | RCA dashboards + investigation reports | `RCAFormatter.print_full_result/investigation()` | Rich (Console/Panel/Table/Rule) | main.py/ai_sre.py output |
-
-### `evaluation/` - Research/Evaluation Tools
-**Role**: Compare baseline vs RAG performance (dissertation).
-
-| File | Purpose | Key Components | Dependencies | Usage |
-|------|---------|----------------|--------------|-------|
-| `__init__.py` | Empty | - | - | - |
-| `comparator.py` | Baseline vs RAG side-by-side | `Comparator.compare/save_comparison_report()` | Rich | `main.py compare logs/test.log` |
-
-### `docs/` - Developer/Dissertation Documentation
-| File | Purpose |
-|------|---------|
-| `developer_guide.md` | Setup, architecture, contribution guide |
-| `dissertation_report.md` | Research paper (RAG vs baseline evaluation) |
-| `mythoughts.md` | Personal notes |
-| `repo_analysis.md` | Auto-generated repo analysis |
-
-### Root Files - CLI Entry Points & Config
-| File | Purpose | Key Logic |
-|------|---------|-----------|
-| `main.py` | Production CLI | `cli()` → `analyze/status/watch/cache/compare/chat` → `run_pipeline()` |
-| `ai_sre.py` | Interactive shell | `SREShell` + `NLParser` (fuzzy matching + SRE keywords) |
-| `config.py` | Constants | Ollama URL/model, ChromaDB path, historical logs dir |
-| `flags.py` | .env parsing + feature flags | `DEBUG`, `USE_KUBERNETES`, `LLM_CACHE_ENABLED`, `RAG_ENABLED` |
-| `requirements.txt` | Dependencies | click, rich, ollama, sentence-transformers, chromadb |
-| `setup.py` | Packaging | `pip install -e .` → `ai-sre` command |
-| `services.yaml` | Dependency graph | Auto-updated by discovery; api-gateway → payment/auth → db |
-
-### `logs/` - Test Data
-- `test.log`: Main demo log
-- `historical/incident_00[1-3].log`: RAG training data (tagged with #resolution)
-- `services/*.log`: Per-service logs
-
-### `mock/kubectl/` - Fake kubectl Output
-Realistic `kubectl describe/events/rollout` output for 9 failure scenarios (OOM, secrets, PVC, etc.).
-
-### `scripts/` - Convenience Scripts
-| Script | Purpose |
-|--------|---------|
-| `ai-sre.sh` | Shell alias setup |
-| `check_env.sh` | Environment validation |
-| `quick_demo.sh` | Automated demo |
-| `setup_alias.sh` | `alias ai-sre=python ...` |
-| `setup_minikube.sh` | Minikube + demo services |
-| `simulate_new_errors.sh` | Live log injection for `watch` |
-| `verify_final.sh` | Final validation checklist |
+This file has been updated to reflect the current codebase:
+- ✅ Command registry pattern (`BaseHandler` + `REGISTRY`) is now central.
+- ✅ `ai_sre.py` uses `resolve()` and handler dispatch (not `NLParser` classes).
+- ✅ No `config.py` in current root architecture; runtime config is in `flags.py` + `.env`.
+- ✅ Kubectl RCA flow is implemented in `core/kubectl_rca_investigator.py` with staged evidence collection.
+- ✅ Sliding-window analysis and incident recording are active (`window_analyzer.py`, `incident_recorder.py`).
 
 ---
 
-## Dependency Analysis
+## Entry Points
 
-### External Libraries
-| Library | Usage | Critical? |
-|---------|--------|-----------|
-| `click` | CLI argument parsing | Yes |
-| `rich` | TUI (tables/panels/progress) | Yes |
-| `requests` | Ollama HTTP API | Yes |
-| `ollama` | LLM inference client | Yes |
-| `sentence-transformers` | Log embedding (all-MiniLM-L6-v2) | RAG |
-| `chromadb` | Vector DB for historical search | RAG |
-| `pyyaml` | services.yaml parsing | Yes |
-| `numpy` | Embeddings backend | RAG |
+### 1) `ai_sre.py` (primary)
+Interactive shell:
+1. Reads user input.
+2. Calls `resolve(user_input)` from `core.command_registry`.
+3. Executes `handler.handle(args)` for matched commands.
+4. Falls back to `provider.generate(...)` for in-scope SRE Q&A.
 
-**No tight coupling**: Core modules injected via factory functions (`get_logger()`, `LogLoader()`).
+### 2) `main.py` (Click CLI + helpers)
+Provides commands like:
+- `analyze`
+- `status`
+- `kubectl_analyze`
+- `watch`
+- `cache`
+- `compare`
+- `chat`
 
-### Internal Dependencies
-```
-main.py/ai_sre.py ─→ core/* ─→ flags/config/logger
-                     ↓
-               output.rca_formatter (Rich UI)
-                     ↓
-         evaluation.comparator (research)
-```
-- **Strong cohesion**: Each core/ module single-responsibility
-- **Dependency injection**: Flags control mock/real, RAG/baseline
+Also contains `run_pipeline(...)` used by compare/watch flows.
 
 ---
 
-## End-to-End Usage Flow
+## Current Command Layer (`core/command_registry.py`)
 
-```
-1. Entry: main.py analyze logs/test.log --mode rag
-   ↓
-2. LogLoader.load_auto() → raw_lines (file or kubectl logs)
-   ↓
-3. LogProcessor.process/filter() → structured_entries
-   ↓
-4. ResourceCollector.get_resources() → pod_metrics (mock or kubectl top/describe)
-   ↓
-5. ContextBuilder.build() → llm_prompt (logs + resources + summary)
-   ↓ (RAG mode)
-6. RAGEngine.retrieve() → ChromaDB top-3 historical matches
-   ↓
-7. LLMAnalyzer.analyze_rag() → LLM call (cache hit/miss) → parse_result
-   ↓
-8. RCAFormatter.print_full_result() → Rich dashboard
-```
+Key handlers:
+- `AnalyseHandler`
+- `StatusHandler`
+- `CompareHandler`
+- `WatchHandler`
+- `ChatHandler`
+- `ExplainHandler`
+- `CleanHandler`
+- `CleanLogsHandler`
+- `HelpHandler`
 
-**Investigation Flow** (`analyze payment-service`):
-```
-SREInvestigator.investigate() →
-ServiceGraph.blast_radius() → affected_services →
-EvidenceCollector.collect() per service (logs/events/describe/top) →
-PatternDetector.detect() → SRE patterns (OOM, CrashLoop, etc.) →
-LLMAnalyzer.analyze_investigation() → deep LLM report
-```
+Primary registry map:
+- `analyse` / `analyze`
+- `status`
+- `compare`
+- `watch`
+- `chat`
+- `explain`
+- `clean`
+- `clean-logs`
+- `help`
+
+Key output helpers:
+- `_print_analysis_result(...)`
+- `_print_baseline_result(...)`
+- `_save_compare_report(...)`
 
 ---
 
-## Strengths & Patterns
-- **Test-driven**: Each core file ends with `__main__` self-tests
-- **Mock-first**: Full functionality without Kubernetes (`--mock`)
-- **Progressive enhancement**: File → kubectl → real cluster
-- **Caching**: LLM responses (TTL 1hr), ChromaDB persistent
-- **Extensible rules**: `PatternDetector.RULES` JSON-like, easy to add patterns
-- **Auto-discovery**: Logs → services.yaml updates
+## Core Module Map (`core/`)
 
-## Potential Improvements
-1. **Metrics server**: Real `kubectl top` integration (Phase 5)
-2. **Live tail**: `kubectl logs -f` streaming
-3. **Alert integration**: Prometheus/Grafana queries
-4. **Multi-cluster**: Context switching
-5. **Team sharing**: Save/load investigations as YAML/JSON
-6. **Grafana dashboards**: Auto-generate investigation viz
-7. **No unused/redundant files**: All files actively used
+| File | Role | Key Symbols |
+|---|---|---|
+| `command_registry.py` | Interactive command dispatch + handlers | `BaseHandler`, `REGISTRY`, `resolve` |
+| `llm_provider.py` | Unified generation/embedding provider (NVIDIA/Ollama) | `LLMProvider.generate`, `LLMProvider.embed`, `provider` |
+| `llm_analyzer.py` | Prompt builders + LLM response parsing | `analyze_baseline`, `analyze_rag`, `analyze_investigation` |
+| `llm_cache.py` | Cache LLM responses on disk | `LLMCache.get/set/stats/clear` |
+| `log_loader.py` | Load from file/kubectl/mock sources | `load_auto`, `load_from_kubectl`, `load_service_logs` |
+| `log_cleaner.py` | Filter noise from logs | `LogCleaner.clean`, `get_stats` |
+| `log_processor.py` | Parse and structure logs | `process`, `filter_by_severity`, `get_summary` |
+| `context_builder.py` | Build LLM-ready context | `build`, `format_logs_for_prompt` |
+| `resource_collector.py` | Mock/live resource metrics | `get_resources`, `get_real_resources` |
+| `rag_engine.py` | ChromaDB indexing + retrieval | `RAGEngine.retrieve`, `_index_historical_logs` |
+| `incident_recorder.py` | Known/new incident decision + persistence | `check_and_save`, `_query_similarity` |
+| `window_analyzer.py` | Sliding-window RCA | `WindowAnalyzer.analyse` |
+| `kubectl_client.py` | Kubectl subprocess wrappers | `get_pods`, `get_pod_events`, `get_service_endpoints`, etc. |
+| `kubectl_rca_investigator.py` | Staged live RCA evidence pipeline | `run_kubectl_rca`, `collect_all_evidence`, `PATTERNS` |
+| `service_graph.py` | Service dependency graph + blast radius | `get_blast_radius`, `discover_from_logs` |
+| `service_discovery.py` | Assist unknown service/namespace matching | `find_matches`, `prompt_for_namespace` |
+| `sre_investigator.py` | Deep multi-service investigation model | `SREInvestigator.investigate`, `PatternDetector` |
+| `logger.py` | Shared logger + noisy-lib suppression | `SRELogger`, `get_logger` |
 
-**Production Ready**: Works end-to-end with mocks; scales to real clusters. Excellent for SRE onboarding & rapid triage. 🚀
+---
+
+## Two Investigation Pipelines
+
+### A) File Mode (`SOURCE_KUBERNETES=false`)
+Used by `analyse <service>` in interactive shell:
+1. `LogLoader.load_service_logs(service)`
+2. `WindowAnalyzer.analyse(lines, service=...)`
+3. Confidence from `CONFIDENCE: <n>%`
+4. Optional merged second window if low confidence
+5. `IncidentRecorder.check_and_save(...)`
+6. `_print_analysis_result(...)`
+
+### B) Kubectl Live Mode (`SOURCE_KUBERNETES=true`)
+Used by `AnalyseHandler._handle_kubectl(...)`:
+1. Resolve service (services.yaml + cluster fallback)
+2. `run_kubectl_rca(service, namespace, service_graph)`
+3. `collect_all_evidence(report)`
+4. LLM narrative via `provider.generate(...)`
+5. Parse confidence from response
+6. `IncidentRecorder.check_and_save(...)` (RAG/compare branches)
+7. Print + report save (if compare)
+
+Kubectl staged evidence collection (`KubectlRCAInvestigator.investigate`):
+1. Pod Status
+2. Pod Events
+3. Pod Logs
+4. Cluster Resources
+5. Node Describe
+6. Service Endpoints
+7. VirtualService
+
+---
+
+## Data + Config Layers
+
+### `flags.py`
+Single source for runtime flags loaded from `.env` + environment variables.
+Includes:
+- provider/model settings,
+- source mode (`SOURCE_KUBERNETES`),
+- RAG thresholds,
+- cache/warmup controls,
+- path defaults (`CHROMA_DB_PATH`, `HISTORICAL_LOGS_DIR`).
+
+### `services.yaml`
+Service topology schema with per-service fields such as:
+- `namespace`
+- `depends_on`
+- `exposes_to`
+- `containers`
+- `dependency_confidence`
+
+Used by `ServiceGraph` and kubectl analyze resolution flow.
+
+### `logs/`
+- `logs/test.log` (fallback test source)
+- `logs/services/*.log` (per-service file mode inputs)
+- `logs/historical/*.log` (incident memory)
+- `logs/mock/kubectl/*` (mock evidence scenarios)
+- `logs/baseline/*` (baseline compare snapshots)
+
+### Vector store
+- ChromaDB path: `.chromadb` (default)
+- Collection: `sre_historical_incidents_v1`
+
+---
+
+## Tech Stack (Current)
+
+From `requirements.txt` + `setup.py` + imports:
+- Python 3.12+
+- `click`
+- `rich`
+- `requests`
+- `ollama`
+- `chromadb`
+- `sentence-transformers`
+- `numpy`
+- `pyyaml`
+- OpenAI-compatible client path for NVIDIA NIM (`from openai import OpenAI` in `core/llm_provider.py`)
+
+---
+
+## Evaluation + Output Modules
+
+- `evaluation/comparator.py`: Baseline vs RAG output comparison (`Comparator.compare`)
+- `output/rca_formatter.py`: Rich rendering for RCA/investigation output
+- `reports/compare_*.txt`: generated compare reports
+
+---
+
+## Practical Strengths
+
+- Command-registry architecture is easy to extend (new command = new handler + registry entry).
+- Supports both demo/offline and live cluster workflows.
+- Incident memory avoids repeating same RCA for known issues.
+- Compare mode supports dissertation-style evidence of RAG contribution.
+- Guardrails are present in chat/out-of-scope checks.
+
+---
+
+## Suggested Next Documentation Sync
+
+If you keep this file as the "quick repo explainer", keep it in sync with:
+- `docs/v3/developer_guide.md` (deep technical reference)
+- `README.md` (public overview)
+- `docs/v3/dissertation_report.md` (research narrative)
 

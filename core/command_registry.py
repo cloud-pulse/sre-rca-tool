@@ -81,8 +81,6 @@ def _print_baseline_result(response, service, confidence=0):
     c = Console()
     clean = re.sub(r'\nCONFIDENCE:.*', '', response, flags=re.DOTALL).strip()
 
-    c.print(Rule("Baseline Analysis — kubectl mode (no RAG)", style="bold blue"))
-
     meta = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
     meta.add_column("Key", style="bold cyan", width=14)
     meta.add_column("Value", style="white")
@@ -109,7 +107,7 @@ def _save_compare_report(service, kubectl_result, baseline_response, baseline_co
     sim = record.get('similarity_score', 0.0)
     kubectl_conf = kubectl_result.get('confidence', 0)
     delta = kubectl_conf - baseline_confidence
-    better = "kubectl/RAG" if delta >= 0 else "Baseline"
+    better = "RAG" if delta >= 0 else "Baseline"
 
     content = f"""# Comparison Report
 # Service: {service}
@@ -129,7 +127,7 @@ Confidence   : {baseline_confidence}%
 {baseline_response}
 
 ## Summary
-kubectl/RAG confidence : {kubectl_conf}%
+RAG confidence         : {kubectl_conf}%
 Baseline confidence    : {baseline_confidence}%
 Delta                  : {abs(delta)}% — {better} is more confident
 Incident saved         : {record.get('saved', False)}
@@ -297,9 +295,9 @@ class AnalyseHandler(BaseHandler):
             return "ok"
 
         # ── COMPARE MODE ──────────────────────────────────────────────────
-        # Run kubectl/RAG analysis + baseline side-by-side
+        # Run RAG analysis + baseline side-by-side
         if compare_mode:
-            console.print("[dim]Running kubectl/RAG analysis...[/dim]")
+            console.print("[dim]Running RAG analysis...[/dim]")
             kubectl_prompt = self._build_kubectl_prompt(resolved, evidence_text, mode="rag")
             kubectl_narrative = provider.generate(kubectl_prompt)
 
@@ -313,7 +311,7 @@ class AnalyseHandler(BaseHandler):
             base_conf_match = re.search(r"CONFIDENCE:\s*(\d+)%", baseline_narrative, re.IGNORECASE)
             baseline_confidence = int(base_conf_match.group(1)) if base_conf_match else 0
 
-            # Incident recording for the kubectl/RAG result
+            # Incident recording for the RAG result
             # Use confidence threshold only — keyword matching is too fragile
             # (LLM often says "healthy" even in a mixed narrative with real issues)
             record = {"saved": False, "reason": "kubectl_compare", "similarity_score": 0.0}
@@ -333,12 +331,12 @@ class AnalyseHandler(BaseHandler):
             # Save comparison report
             report_path = _save_compare_report(resolved, kubectl_result, baseline_narrative, baseline_confidence)
 
-            # Save to .last_rca.json (use the kubectl/RAG result as primary)
+            # Save to .last_rca.json (use the RAG result as primary)
             _save_last_rca({**kubectl_result, "mode": "compare_kubectl"})
 
             # Display
             self._print_kubectl_context(report, resolved, namespace)
-            _print_analysis_result(kubectl_result, mode="kubectl/RAG")
+            _print_analysis_result(kubectl_result, mode="RAG")
 
             # Show baseline summary inline
             console.print(Rule("Baseline Analysis (no RAG)", style="bold blue"))
@@ -346,9 +344,9 @@ class AnalyseHandler(BaseHandler):
 
             # Show comparison summary
             delta = kubectl_confidence - baseline_confidence
-            better = "kubectl/RAG" if delta >= 0 else "Baseline"
+            better = " RAG" if delta >= 0 else "Baseline"
             console.print(Panel(
-                f"[bold]kubectl/RAG confidence:[/bold]  {kubectl_confidence}%\n"
+                f"[bold]RAG confidence:        [/bold]  {kubectl_confidence}%\n"
                 f"[bold]Baseline confidence:   [/bold]  {baseline_confidence}%\n"
                 f"[bold]Delta:                 [/bold]  {abs(delta)}% — [bold cyan]{better}[/bold cyan] is more confident\n"
                 f"[bold]Incident saved:        [/bold]  {'Yes' if record.get('saved') else 'No'}\n"

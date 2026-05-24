@@ -263,7 +263,7 @@ class KubectlRCAInvestigator:
         depth: int = 0,
     ) -> RCAReport:
 
-        log.info("[RCA] Investigating '{service_name}' in namespace '{namespace}'")
+        log.info(f"[RCA] Investigating '{service_name}' in namespace '{namespace}'")
 
         finding = RCAFinding(
             affected_service=service_name
