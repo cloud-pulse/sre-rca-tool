@@ -41,6 +41,31 @@ class LogProcessor:
 
     VALID_LEVELS = ['ERROR', 'CRITICAL', 'WARN', 'INFO', 'DEBUG', 'UNKNOWN']
 
+    def __init__(self):
+        """Initialize log processor configuration."""
+        self.re_iso_time = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z')
+        self.re_time = re.compile(r'\d{1,2}:\d{2}(?::\d{2})?')
+        self.re_bracket_level = re.compile(r'\[([A-Z]+)\]')
+
+        valid_level_pattern = r'\b(' + '|'.join(self.VALID_LEVELS) + r')\b'
+        self.re_valid_levels = re.compile(valid_level_pattern, re.IGNORECASE)
+        self.re_alias_levels = re.compile(r'\b(crit|warning)\b', re.IGNORECASE)
+
+        self.re_bracket_service = re.compile(r'\[([a-z\-]+)\]')
+
+        known_service_pattern = r'\b(' + '|'.join(map(re.escape, self.KNOWN_SERVICES)) + r')\b'
+        self.re_known_services = re.compile(known_service_pattern, re.IGNORECASE)
+
+        self.re_msg_cleanups = [
+            re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*'),
+            re.compile(r'\s*\[[A-Z]+\]\s*'),
+            re.compile(r'\s*\[[a-z\-]+\]\s*'),
+            re.compile(r'\d{1,2}:\d{2}(?::\d{2})?\s*'),
+            re.compile(r'\b(?:' + '|'.join(['ERROR', 'CRITICAL', 'CRIT', 'WARN', 'WARNING', 'INFO', 'DEBUG']) + r')\b\s*', re.IGNORECASE),
+            re.compile(r'\b(?:' + '|'.join(map(re.escape, self.KNOWN_SERVICES)) + r')\b\s*', re.IGNORECASE),
+            re.compile(r'^[\s\-]+')
+        ]
+
     def process(self, raw_lines: list[str]) -> list[dict]:
         """
         Parse raw log lines into structured dictionaries.
@@ -72,56 +97,43 @@ class LogProcessor:
 
     def _extract_timestamp(self, line: str) -> str:
         """Extract timestamp from log line."""
-        # Try ISO format first: 2024-03-15T10:00:01Z
-        iso_match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', line)
-        if iso_match:
-            return iso_match.group(0)
-
-        # Try time only: HH:MM:SS or HH:MM
-        time_match = re.search(r'\d{1,2}:\d{2}(?::\d{2})?', line)
-        if time_match:
-            return time_match.group(0)
-
+        m = self.re_iso_time.search(line)
+        if m: return m.group(0)
+        m = self.re_time.search(line)
+        if m: return m.group(0)
         return "unknown"
 
     def _extract_level(self, line: str) -> str:
         """Extract log level from log line."""
-        # Try bracketed format: [INFO], [ERROR], etc.
-        bracket_match = re.search(r'\[([A-Z]+)\]', line)
-        if bracket_match:
-            level = bracket_match.group(1)
-            # Normalize if needed
+        m = self.re_bracket_level.search(line)
+        if m:
+            level = m.group(1)
             level = self.LEVEL_ALIASES.get(level, level)
             if level in self.VALID_LEVELS:
                 return level
 
-        # Try plain word format at word boundaries
-        for valid_level in self.VALID_LEVELS:
-            if re.search(r'\b' + valid_level + r'\b', line, re.IGNORECASE):
-                return valid_level
+        m = self.re_valid_levels.search(line)
+        if m:
+            return m.group(1).upper()
 
-        # Check for aliases
-        for alias_lower in ['crit', 'warning']:
-            if re.search(r'\b' + alias_lower + r'\b', line, re.IGNORECASE):
-                normalized = self.LEVEL_ALIASES.get(alias_lower.upper(), alias_lower.upper())
-                return normalized
+        m = self.re_alias_levels.search(line)
+        if m:
+            alias_lower = m.group(1).lower()
+            return self.LEVEL_ALIASES.get(alias_lower.upper(), alias_lower.upper())
 
         return "UNKNOWN"
 
     def _extract_service(self, line: str) -> str:
         """Extract service name from log line."""
-        # Try bracketed format: [api-gateway], [payment-service]
-        bracket_match = re.search(r'\[([a-z\-]+)\]', line)
-        if bracket_match:
-            potential_service = bracket_match.group(1)
-            # Check if it looks like a service name (contains hyphens or is known)
-            if '-' in potential_service or potential_service in self.KNOWN_SERVICES:
-                return self._normalize_service(potential_service)
+        m = self.re_bracket_service.search(line)
+        if m:
+            potential = m.group(1)
+            if '-' in potential or potential in self.KNOWN_SERVICES:
+                return self._normalize_service(potential)
 
-        # Try to find known service names anywhere in line
-        for service in self.KNOWN_SERVICES:
-            if re.search(r'\b' + re.escape(service) + r'\b', line, re.IGNORECASE):
-                return self._normalize_service(service)
+        m = self.re_known_services.search(line)
+        if m:
+            return self._normalize_service(m.group(1))
 
         return "unknown"
 
@@ -133,30 +145,8 @@ class LogProcessor:
     def _extract_message(self, line: str) -> str:
         """Extract message by removing timestamp, level, and service."""
         message = line
-
-        # Remove ISO timestamp if present
-        message = re.sub(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*', '', message)
-
-        # Remove bracketed level
-        message = re.sub(r'\s*\[[A-Z]+\]\s*', '', message)
-
-        # Remove bracketed service
-        message = re.sub(r'\s*\[[a-z\-]+\]\s*', '', message)
-
-        # Remove time-only patterns
-        message = re.sub(r'\d{1,2}:\d{2}(?::\d{2})?\s*', '', message)
-
-        # Remove level keywords (plain word format)
-        for level in ['ERROR', 'CRITICAL', 'CRIT', 'WARN', 'WARNING', 'INFO', 'DEBUG']:
-            message = re.sub(r'\b' + level + r'\b\s*', '', message, flags=re.IGNORECASE)
-
-        # Remove service names
-        for service in self.KNOWN_SERVICES:
-            message = re.sub(r'\b' + re.escape(service) + r'\b\s*', '', message, flags=re.IGNORECASE)
-
-        # Remove leading punctuation and dashes
-        message = re.sub(r'^[\s\-]+', '', message)
-
+        for regex in self.re_msg_cleanups:
+            message = regex.sub('', message)
         return message.strip()
 
     def filter_by_severity(self, entries: list[dict], severity: str) -> list[dict]:
@@ -210,29 +200,41 @@ class LogProcessor:
         Returns:
             Dictionary with summary statistics
         """
-        summary = {
-            "total": len(entries),
-            "errors": sum(1 for e in entries if e['level'] in ['ERROR', 'CRITICAL']),
-            "warnings": sum(1 for e in entries if e['level'] == 'WARN'),
-            "info": sum(1 for e in entries if e['level'] == 'INFO'),
-            "unknown": sum(1 for e in entries if e['level'] == 'UNKNOWN'),
-            "services": [],
-            "time_range": {"start": "unknown", "end": "unknown"}
-        }
-
-        # Get unique services (excluding "unknown")
+        total = len(entries)
+        errors = 0
+        warnings = 0
+        info = 0
+        unknown = 0
         services = set()
-        for entry in entries:
-            if entry['service'] != 'unknown':
-                services.add(entry['service'])
-        summary["services"] = sorted(list(services))
+        start_time = "unknown"
+        end_time = "unknown"
 
-        # Get time range
-        timestamps = [e['timestamp'] for e in entries if e['timestamp'] != 'unknown']
-        if timestamps:
-            summary["time_range"]["start"] = timestamps[0]
-            summary["time_range"]["end"] = timestamps[-1]
+        for e in entries:
+            lvl = e['level']
+            if lvl in ('ERROR', 'CRITICAL'): errors += 1
+            elif lvl == 'WARN': warnings += 1
+            elif lvl == 'INFO': info += 1
+            elif lvl == 'UNKNOWN': unknown += 1
 
+            svc = e['service']
+            if svc != 'unknown':
+                services.add(svc)
+
+            ts = e['timestamp']
+            if ts != 'unknown':
+                if start_time == "unknown":
+                    start_time = ts
+                end_time = ts
+
+        summary = {
+            "total": total,
+            "errors": errors,
+            "warnings": warnings,
+            "info": info,
+            "unknown": unknown,
+            "services": sorted(list(services)),
+            "time_range": {"start": start_time, "end": end_time}
+        }
         return summary
 
     def get_failure_chain(self, entries: list[dict]) -> list[str]:
