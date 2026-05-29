@@ -61,3 +61,4 @@ venv/
 .vscode/
 .idea/
 *.swp
+logs/historical/*.log
