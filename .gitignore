@@ -61,3 +61,5 @@ venv/
 .vscode/
 .idea/
 *.swp
+*.pyc
+__pycache__/
