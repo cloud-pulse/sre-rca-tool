@@ -1,3 +1,5 @@
+import re
+
 class LogCleaner:
     def __init__(self):
         self.health_patterns = [
@@ -9,6 +11,7 @@ class LogCleaner:
             "get /ping",
             "get /ready"
         ]
+        self.health_regex = re.compile('|'.join(re.escape(p) for p in self.health_patterns))
 
         self.debug_patterns = [
             "token validation successful",
@@ -16,6 +19,7 @@ class LogCleaner:
             "routing paths updated",
             "connected to identity provider"
         ]
+        self.debug_regex = re.compile('|'.join(re.escape(p) for p in self.debug_patterns))
 
         self.keep_patterns = [
             "error", "warn", "crit", "critical",
@@ -23,6 +27,7 @@ class LogCleaner:
             "circuit breaker", "rollback", "timeout", "exhausted",
             "unreachable", "degraded", "failed"
         ]
+        self.keep_regex = re.compile('|'.join(re.escape(p) for p in self.keep_patterns))
 
     def clean(self, lines: list[str]) -> list[str]:
         cleaned = []
@@ -41,23 +46,12 @@ class LogCleaner:
                 prev_line_stripped = stripped
 
             # MUST KEEP (bypasses all dropping rules)
-            must_keep = False
-            for keep_pattern in self.keep_patterns:
-                if keep_pattern in line_lower:
-                    must_keep = True
-                    break
-
-            if must_keep:
+            if self.keep_regex.search(line_lower):
                 cleaned.append(line)
                 continue
 
             # Rule 1: HEALTH PROBES
-            is_health_probe = False
-            for hp in self.health_patterns:
-                if hp in line_lower:
-                    is_health_probe = True
-                    break
-            if is_health_probe:
+            if self.health_regex.search(line_lower):
                 continue
 
             # Rule 2: PURE METRICS LINES
@@ -65,14 +59,8 @@ class LogCleaner:
                 continue
 
             # Rule 4: DEBUG NOISE
-            is_info = "[info]" in line_lower or " info " in line_lower
-            if is_info:
-                is_debug_noise = False
-                for dp in self.debug_patterns:
-                    if dp in line_lower:
-                        is_debug_noise = True
-                        break
-                if is_debug_noise:
+            if "[info]" in line_lower or " info " in line_lower:
+                if self.debug_regex.search(line_lower):
                     continue
 
             # Rule 3: REPEATED CONSECUTIVE DUPLICATES
