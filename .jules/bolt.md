@@ -1,0 +1,3 @@
+## 2024-06-05 - Optimize LogProcessor with Pre-compiled Regular Expressions
+**Learning:** In the log processing path, recreating `re.compile` patterns by doing string concatenation (`r'\b' + valid_level + r'\b'`) inside a loop over valid levels for every single log line created a massive performance bottleneck. The overhead of compiling regular expressions repeatedly dominates the log parsing time, particularly for large historical log files.
+**Action:** When creating high-throughput text parsing classes in Python, always pre-compile all static regular expressions in the class `__init__` method and reuse the compiled pattern objects for searches and substitutions.
