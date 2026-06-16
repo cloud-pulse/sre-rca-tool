@@ -1,0 +1,3 @@
+## 2026-06-16 - Pre-compile Regex Objects in LogProcessor
+**Learning:** This application heavily parses string logs using regular expressions. Calling `re.search` and `re.sub` on every log line causes regex patterns to be compiled repeatedly, resulting in a significant performance bottleneck in `core/log_processor.py`.
+**Action:** When implementing classes that apply regular expressions to many records or log lines iteratively, pre-compile all regex patterns using `re.compile` in the class's `__init__` method. This avoids redundant compilations and speeds up string matching logic substantially.
