@@ -1,0 +1,3 @@
+## 2026-06-19 - Regex Compilation Overhead
+**Learning:** In python, processing a large amount of text using standard string replacements or raw re module calls on loops (like re.search or re.sub) incurs significant repetitive compilation overhead for every search.
+**Action:** When dealing with iterative string parsing classes like LogProcessor, pre-compile all regexes in the __init__ class initialization step using `re.compile()` and then use the precompiled pattern instances in the loop. This can result in almost a 3x speedup.
