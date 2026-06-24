@@ -1,0 +1,3 @@
+## 2026-06-24 - LogProcessor Regex Pre-compilation
+**Learning:** Found significant performance overhead in `LogProcessor` due to repeatedly compiling complex regular expressions on every `process` loop iteration and inline `re.search`/`re.sub` usage. The processing time for 100k log lines was ~6.8 seconds.
+**Action:** Always pre-compile regular expressions using `re.compile()` in class `__init__` methods rather than calling them inline inside hot processing loops. This reduced the benchmark time from 6.8 seconds to 2.6 seconds (a ~60% improvement).
