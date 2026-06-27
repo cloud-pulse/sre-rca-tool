@@ -41,6 +41,21 @@ class LogProcessor:
 
     VALID_LEVELS = ['ERROR', 'CRITICAL', 'WARN', 'INFO', 'DEBUG', 'UNKNOWN']
 
+    def __init__(self):
+        """Initialize and pre-compile regular expressions for log processing."""
+        level_keywords = ['ERROR', 'CRITICAL', 'CRIT', 'WARN', 'WARNING', 'INFO', 'DEBUG']
+        # Combine multiple iterative re.sub passes into a single regex using the | operator for performance
+        cleanup_parts = [
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*',
+            r'\s*\[[A-Z]+\]\s*',
+            r'\s*\[[a-z\-]+\]\s*',
+            r'\d{1,2}:\d{2}(?::\d{2})?\s*',
+            r'\b(?:' + '|'.join(level_keywords) + r')\b\s*',
+            r'\b(?:' + '|'.join(re.escape(s) for s in self.KNOWN_SERVICES) + r')\b\s*'
+        ]
+        self._msg_cleanup_re = re.compile('|'.join(cleanup_parts), flags=re.IGNORECASE)
+        self._msg_leading_punct_re = re.compile(r'^[\s\-]+')
+
     def process(self, raw_lines: list[str]) -> list[dict]:
         """
         Parse raw log lines into structured dictionaries.
@@ -132,30 +147,11 @@ class LogProcessor:
 
     def _extract_message(self, line: str) -> str:
         """Extract message by removing timestamp, level, and service."""
-        message = line
-
-        # Remove ISO timestamp if present
-        message = re.sub(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*', '', message)
-
-        # Remove bracketed level
-        message = re.sub(r'\s*\[[A-Z]+\]\s*', '', message)
-
-        # Remove bracketed service
-        message = re.sub(r'\s*\[[a-z\-]+\]\s*', '', message)
-
-        # Remove time-only patterns
-        message = re.sub(r'\d{1,2}:\d{2}(?::\d{2})?\s*', '', message)
-
-        # Remove level keywords (plain word format)
-        for level in ['ERROR', 'CRITICAL', 'CRIT', 'WARN', 'WARNING', 'INFO', 'DEBUG']:
-            message = re.sub(r'\b' + level + r'\b\s*', '', message, flags=re.IGNORECASE)
-
-        # Remove service names
-        for service in self.KNOWN_SERVICES:
-            message = re.sub(r'\b' + re.escape(service) + r'\b\s*', '', message, flags=re.IGNORECASE)
+        # Performance optimization: use pre-compiled, combined regex pattern
+        message = self._msg_cleanup_re.sub('', line)
 
         # Remove leading punctuation and dashes
-        message = re.sub(r'^[\s\-]+', '', message)
+        message = self._msg_leading_punct_re.sub('', message)
 
         return message.strip()
 
