@@ -1,0 +1,3 @@
+## 2026-06-28 - Optimize re.sub in LogProcessor
+**Learning:** Combining multiple repeated `re.sub` passes into a single regex using the `|` operator provides a massive performance boost over running multiple separate string replacements iteratively, reducing overhead and string allocations significantly. Pre-compiling regexes in `__init__` also removes instantiation overhead per log line.
+**Action:** Use single-pass regex replacement when cleaning common metadata or repeating similar substitution patterns in loop-heavy Python code. Keep `__pycache__` files clean using specific tracked-file checkout in git.

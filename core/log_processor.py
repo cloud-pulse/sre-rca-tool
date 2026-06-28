@@ -41,6 +41,37 @@ class LogProcessor:
 
     VALID_LEVELS = ['ERROR', 'CRITICAL', 'WARN', 'INFO', 'DEBUG', 'UNKNOWN']
 
+    def __init__(self):
+        """Initialize the processor and pre-compile regular expressions for performance."""
+        # Timestamp regexes
+        self._re_iso_time = re.compile(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z')
+        self._re_simple_time = re.compile(r'\d{1,2}:\d{2}(?::\d{2})?')
+
+        # Level regexes
+        self._re_bracket_level = re.compile(r'\[([A-Z]+)\]')
+        self._re_valid_levels = [re.compile(r'\b' + lvl + r'\b', re.IGNORECASE) for lvl in self.VALID_LEVELS]
+        self._re_alias_levels = [re.compile(r'\b' + alias + r'\b', re.IGNORECASE) for alias in ['crit', 'warning']]
+
+        # Service regexes
+        self._re_bracket_service = re.compile(r'\[([a-z\-]+)\]')
+        self._re_known_services = [re.compile(r'\b' + re.escape(svc) + r'\b', re.IGNORECASE) for svc in self.KNOWN_SERVICES]
+
+        # Message extraction combined regex
+        patterns = [
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*',
+            r'\s*\[[A-Z]+\]\s*',
+            r'\s*\[[a-z\-]+\]\s*',
+            r'\d{1,2}:\d{2}(?::\d{2})?\s*'
+        ]
+        for level in ['ERROR', 'CRITICAL', 'CRIT', 'WARN', 'WARNING', 'INFO', 'DEBUG']:
+            patterns.append(r'\b' + level + r'\b\s*')
+        for service in self.KNOWN_SERVICES:
+            patterns.append(r'\b' + re.escape(service) + r'\b\s*')
+
+        # Combine multiple re.sub replacements into a single regex pass
+        self._re_msg_combined = re.compile('|'.join(patterns), re.IGNORECASE)
+        self._re_msg_leading = re.compile(r'^[\s\-]+')
+
     def process(self, raw_lines: list[str]) -> list[dict]:
         """
         Parse raw log lines into structured dictionaries.
@@ -73,12 +104,12 @@ class LogProcessor:
     def _extract_timestamp(self, line: str) -> str:
         """Extract timestamp from log line."""
         # Try ISO format first: 2024-03-15T10:00:01Z
-        iso_match = re.search(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', line)
+        iso_match = self._re_iso_time.search(line)
         if iso_match:
             return iso_match.group(0)
 
         # Try time only: HH:MM:SS or HH:MM
-        time_match = re.search(r'\d{1,2}:\d{2}(?::\d{2})?', line)
+        time_match = self._re_simple_time.search(line)
         if time_match:
             return time_match.group(0)
 
@@ -87,7 +118,7 @@ class LogProcessor:
     def _extract_level(self, line: str) -> str:
         """Extract log level from log line."""
         # Try bracketed format: [INFO], [ERROR], etc.
-        bracket_match = re.search(r'\[([A-Z]+)\]', line)
+        bracket_match = self._re_bracket_level.search(line)
         if bracket_match:
             level = bracket_match.group(1)
             # Normalize if needed
@@ -96,13 +127,13 @@ class LogProcessor:
                 return level
 
         # Try plain word format at word boundaries
-        for valid_level in self.VALID_LEVELS:
-            if re.search(r'\b' + valid_level + r'\b', line, re.IGNORECASE):
-                return valid_level
+        for i, lvl_re in enumerate(self._re_valid_levels):
+            if lvl_re.search(line):
+                return self.VALID_LEVELS[i]
 
         # Check for aliases
-        for alias_lower in ['crit', 'warning']:
-            if re.search(r'\b' + alias_lower + r'\b', line, re.IGNORECASE):
+        for i, alias_lower in enumerate(['crit', 'warning']):
+            if self._re_alias_levels[i].search(line):
                 normalized = self.LEVEL_ALIASES.get(alias_lower.upper(), alias_lower.upper())
                 return normalized
 
@@ -111,7 +142,7 @@ class LogProcessor:
     def _extract_service(self, line: str) -> str:
         """Extract service name from log line."""
         # Try bracketed format: [api-gateway], [payment-service]
-        bracket_match = re.search(r'\[([a-z\-]+)\]', line)
+        bracket_match = self._re_bracket_service.search(line)
         if bracket_match:
             potential_service = bracket_match.group(1)
             # Check if it looks like a service name (contains hyphens or is known)
@@ -119,9 +150,9 @@ class LogProcessor:
                 return self._normalize_service(potential_service)
 
         # Try to find known service names anywhere in line
-        for service in self.KNOWN_SERVICES:
-            if re.search(r'\b' + re.escape(service) + r'\b', line, re.IGNORECASE):
-                return self._normalize_service(service)
+        for i, svc_re in enumerate(self._re_known_services):
+            if svc_re.search(line):
+                return self._normalize_service(self.KNOWN_SERVICES[i])
 
         return "unknown"
 
@@ -132,30 +163,11 @@ class LogProcessor:
 
     def _extract_message(self, line: str) -> str:
         """Extract message by removing timestamp, level, and service."""
-        message = line
-
-        # Remove ISO timestamp if present
-        message = re.sub(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\s*', '', message)
-
-        # Remove bracketed level
-        message = re.sub(r'\s*\[[A-Z]+\]\s*', '', message)
-
-        # Remove bracketed service
-        message = re.sub(r'\s*\[[a-z\-]+\]\s*', '', message)
-
-        # Remove time-only patterns
-        message = re.sub(r'\d{1,2}:\d{2}(?::\d{2})?\s*', '', message)
-
-        # Remove level keywords (plain word format)
-        for level in ['ERROR', 'CRITICAL', 'CRIT', 'WARN', 'WARNING', 'INFO', 'DEBUG']:
-            message = re.sub(r'\b' + level + r'\b\s*', '', message, flags=re.IGNORECASE)
-
-        # Remove service names
-        for service in self.KNOWN_SERVICES:
-            message = re.sub(r'\b' + re.escape(service) + r'\b\s*', '', message, flags=re.IGNORECASE)
+        # Use single pass replacement for all common log metadata
+        message = self._re_msg_combined.sub('', line)
 
         # Remove leading punctuation and dashes
-        message = re.sub(r'^[\s\-]+', '', message)
+        message = self._re_msg_leading.sub('', message)
 
         return message.strip()
 
