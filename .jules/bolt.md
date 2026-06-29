@@ -1,0 +1,3 @@
+## 2026-06-29 - Pre-compiling Regex in Python
+**Learning:** Pre-compiling regular expressions in `__init__` instead of running `re.search` and `re.sub` inline during iterative function calls provides massive performance boosts. Combining repeated replacement patterns (like arrays of valid services) into single grouped patterns using `|` removes multi-pass loop bottlenecks and shifts the workload to the highly-optimized C regex engine.
+**Action:** When finding iterative `re.sub` patterns in Python loops or methods called frequently, refactor them into pre-compiled regex objects in the constructor, combining repeated string/keyword replacements with `|` whenever safely possible.
