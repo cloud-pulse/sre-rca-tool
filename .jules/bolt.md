@@ -1,0 +1,4 @@
+
+## 2024-05-24 - Pre-compiling Regexes and Combining Substitutions
+**Learning:** In LogProcessor, extracting log lines requires a lot of regex operations. Pre-compiling regexes in `__init__` is much faster than inline `re.search` or `re.sub`. However, when attempting to combine multiple `re.sub` patterns with `|` into a single pattern for the message extraction, it caused bugs in whitespace preservation and message output (e.g. 'WARNINGPayment retry 1'). Reverting to individual pre-compiled `re.sub` calls executed in sequence (like the original) avoids regressions while still drastically improving performance (3.6s to 0.9s on benchmark).
+**Action:** Pre-compile regexes in `__init__` for performance optimization but preserve the exact sequential execution of `re.sub` calls to maintain bug-for-bug whitespace and output compatibility instead of trying to combine them with `|`.
