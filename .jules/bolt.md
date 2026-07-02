@@ -1,0 +1,3 @@
+## 2024-07-02 - Inline Regex Compilation Performance Degradation
+**Learning:** In highly repetitive code paths like `LogProcessor.process()` (which is called for every log line in the SRE application), using inline `re.search` and `re.sub` severely degrades parsing speed by causing redundant regex parsing and execution overhead over thousands of log lines.
+**Action:** Pre-compile regular expressions using `re.compile()` inside the class `__init__` and reuse them. Maintain sequential, individual `re.sub` executions rather than combining them via the `|` operator, ensuring identical bug-for-bug backward compatibility with complex whitespace handling.
