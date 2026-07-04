@@ -1,0 +1,4 @@
+
+## 2024-07-04 - [Pre-compiling Regex in Log Processing Loop]
+**Learning:** Python's `re` module internally caches recent patterns, but for high-volume loop structures (like processing thousands of log lines), the overhead of cache lookup or repeated instantiation during inline `re.sub`/`re.search` calls creates a measurable bottleneck. Combining multiple `re.sub` passes into a single complex regex can break formatting logic (especially sequential whitespace deletion), so it's safer to pre-compile the individual patterns but execute them in the original sequence.
+**Action:** When extracting data in hot paths or tight loops, always explicitly pre-compile `re.compile()` objects in the class `__init__` rather than relying on inline pattern strings, ensuring bug-for-bug preservation of exact replacement orders.
