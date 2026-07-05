@@ -1,0 +1,3 @@
+## 2024-07-05 - Pre-compiling nested regular expressions for string sub patterns
+**Learning:** In string-heavy parsing tasks with loops running substitution, compiling regex patterns in Python drastically reduces parsing overhead, but when sequential string replacements dictate specific formatting removals, combining multiple `re.sub` into one regex can break delicate whitespace formatting.
+**Action:** Extract repetitive regular expressions into pre-compiled instances located in the `__init__` constructor and invoke their corresponding `search` or `sub` methods inline, iterating across pattern arrays if required instead of changing logic flow to preserve exact behaviour.
